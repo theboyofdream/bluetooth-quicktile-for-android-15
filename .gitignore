@@ -1,0 +1,27 @@
+# Built application files
+*.apk
+*.aab
+
+# Keystores & signing secrets
+*.keystore
+*.jks
+release.properties
+
+# Gradle files
+.gradle/
+build/
+app/build/
+
+# Local configuration file (sdk path, etc)
+local.properties
+
+# Log files
+*.log
+
+# Android Studio / IntelliJ IDEA
+.idea/
+*.iml
+.DS_Store
+captures/
+.externalNativeBuild
+.cxx

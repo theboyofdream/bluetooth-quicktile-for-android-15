@@ -1,0 +1,31 @@
+<resources>
+    <string name="app_name">Bluetooth Quicktile for android 15</string>
+    <string name="tile_label">Bluetooth</string>
+    <string name="tile_state_off">Off</string>
+    <string name="tile_state_on">On</string>
+    <string name="tile_state_connecting">Connecting…</string>
+
+    <!-- Main UI strings -->
+    <string name="header_title">Bluetooth Quicktile</string>
+    <string name="header_subtitle">Direct one-tap Bluetooth tile for Android 15</string>
+
+    <string name="permission_card_title">Bluetooth Permission</string>
+    <string name="permission_card_desc">Requires Nearby Devices (BLUETOOTH_CONNECT) permission to read connected device names and control Bluetooth.</string>
+    <string name="permission_granted">Permission Granted</string>
+    <string name="permission_needed">Permission Required</string>
+    <string name="btn_grant_permission">Grant Permission</string>
+
+    <string name="tile_setup_title">Quick Settings Tile</string>
+    <string name="tile_setup_desc">Add the tile to your Quick Settings panel to toggle Bluetooth directly with a single tap.</string>
+    <string name="btn_add_tile">Add Tile to Quick Settings</string>
+    <string name="tile_already_added">Tile is available in Quick Settings</string>
+
+    <string name="status_title">Current Bluetooth State</string>
+    <string name="btn_test_toggle">Test Direct Toggle</string>
+    <string name="btn_open_bt_settings">Open Bluetooth Settings</string>
+    <string name="tile_usage_tip">Single-tap toggles Bluetooth directly.\nLong-press opens Bluetooth &amp; BLE device settings.</string>
+
+
+    <string name="how_it_works_title">How Android 15 Direct Control Works</string>
+    <string name="how_it_works_desc">Android 13+ normally blocks apps from directly enabling or disabling Bluetooth and forces a multi-step popup dialog. By utilizing the proven mechanism discovered in the MacroDroid Connectivity Helper reference, this app leverages Android\'s backward compatibility layer (targetSdk 32) while compiling against the Android 15 SDK (compileSdk 35) to regain instant, one-tap Bluetooth toggling without extra UI.</string>
+</resources>
