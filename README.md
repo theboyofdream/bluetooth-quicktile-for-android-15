@@ -9,7 +9,7 @@ Built with **Jetpack Compose Material 3** and **Dynamic Wallpaper Colors (Materi
 ## 🚀 Pre-Built Release APK
 
 Ready-to-install, signed release APK is available directly for download:
-* 📥 **Direct APK Download:** [**BluetoothQuickTile-release.apk**](https://github.com/theboyofdream/bluetooth-quicktile-for-android-15/raw/main/BluetoothQuickTile-release.apk)
+* 📥 **Direct APK Download:** [**BluetoothQuickTile-release.apk (Latest)**](https://github.com/theboyofdream/bluetooth-quicktile-for-android-15/releases/latest/download/BluetoothQuickTile-release.apk)
 
 Install directly via ADB:
 ```powershell

@@ -36,12 +36,16 @@ jobs:
           echo "tag=v$VERSION" >> "$GITHUB_OUTPUT"
 
       - name: Decode Release Keystore
-        if: env.KEYSTORE_BASE64 != ''
         env:
           KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
         run: |
-          mkdir -p app
-          echo "$KEYSTORE_BASE64" | base64 -d > app/release.keystore
+          if [ -n "$KEYSTORE_BASE64" ]; then
+            mkdir -p app
+            echo "$KEYSTORE_BASE64" | base64 -d > app/release.keystore
+            echo "Release keystore decoded successfully."
+          else
+            echo "::warning::KEYSTORE_BASE64 secret is not set!"
+          fi
 
       - name: Build APKs
         env:
