@@ -12,6 +12,7 @@
     <string name="tile_state_on">On</string>
     <string name="tile_state_connecting">Connecting…</string>
     <string name="tile_state_unavailable">Unavailable</string>
+    <string name="tile_state_permission_required">Tap to set up</string>
     <string name="tile_content_description">%1$s, %2$s</string>
 
     <!-- Header -->

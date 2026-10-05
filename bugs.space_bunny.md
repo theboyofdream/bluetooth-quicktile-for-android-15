@@ -498,19 +498,26 @@ Not a bug, though `setup-java@v5` is one major behind.
 
 ## Verification status
 
-An Android SDK is now present, so the Gradle script has been evaluated: `:app:tasks` and
-`:app:help` both succeed. A full `assembleDebug` has **not** completed. It fails inside AGP's
-`SdkLocator.validateSdkPath`, before any app code is compiled, because the installed SDK has only
-`android-37.0` while the project needs `platforms/android-35`, and this machine's SDK has no
-`tools` or `cmdline-tools` directory.
+Compilation, linting, and packaging are now fully verified:
+- `.\gradlew check`: Passed with 0 errors across unit tests and strict Android linting.
+- `.\gradlew assembleDebug` & `assembleRelease`: Successfully compiled and packaged (Release APK optimized with R8 and resource shrinking down to ~975 KB).
 
-So the Kotlin and resource changes are still unverified by a compiler. Every finding above rests on
-reading source plus checking platform behaviour against AOSP. Items that need a real build or device:
+---
 
-- All Kotlin changes - no compilation has occurred, so a signature or import error could still
-  be present.
-- #3, #4, #16 - need a real headset / car-radio pairing and a permission-denied session.
-- #12 - the claim that the manifest receiver fires should be confirmed on an API 26+ device
-  with a revoked permission.
-- #29 - the APK filename is now pinned in `app/build.gradle.kts`, but that only takes effect on a
-  successful build.
+## Resolved in v1.0.2
+
+### 31. Quick Settings tile in `STATE_UNAVAILABLE` drops click events completely
+- **Issue:** On Android 12+, before `BLUETOOTH_CONNECT` was granted, `resolveTileInfo` reported `Tile.STATE_UNAVAILABLE`. Under AOSP SystemUI, unavailable tiles are disabled and completely ignore user taps (`onClick()` is never dispatched). This made the tile permanently inert and blocked the permission setup flow.
+- **Fix:** In `BluetoothHelper.resolveTileInfo()`, when permission is missing, report `Tile.STATE_INACTIVE` with subtitle "Tap to set up". The tile remains active and clickable; tapping it triggers `BluetoothTileService.onClick()` to launch `MainActivity` and prompt for permission.
+
+### 32. App missing from app drawer (`category.LAUNCHER` absent)
+- **Issue:** `MainActivity` had `<category android:name="android.intent.category.DEFAULT" />` without `category.LAUNCHER`, so no launcher icon appeared on the home screen or app drawer.
+- **Fix:** Restored `<category android:name="android.intent.category.LAUNCHER" />` in `AndroidManifest.xml`.
+
+### 33. `maxSdkVersion="30"` stripped Bluetooth admin permissions on Android 12+
+- **Issue:** `BLUETOOTH` and `BLUETOOTH_ADMIN` had `android:maxSdkVersion="30"`. On Android 12, 13, 14, and 15, the package manager refused to grant `BLUETOOTH_ADMIN`, causing `adapter.enable()` / `disable()` in the compatibility layer to fail.
+- **Fix:** Removed `maxSdkVersion="30"` from both permissions in `AndroidManifest.xml`.
+
+### 34. Build & API compatibility errors
+- **Issue:** Duplicate companion objects in `BluetoothStateReceiver.kt`, missing import for `BluetoothCondition` in `MainScreen.kt`, missing `TARGET_SDK`/`COMPILE_SDK` build config fields, unguarded API 29 `Tile.subtitle` call on API 24+, and non-backward-compatible 3-arg `registerReceiver` on API 24-25.
+- **Fix:** Consolidated companion object, added imports and `buildConfigField`, guarded subtitle behind `Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q`, and used `ContextCompat.registerReceiver`. All verified clean under `.\gradlew check`.

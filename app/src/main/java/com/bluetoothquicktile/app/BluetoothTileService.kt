@@ -118,16 +118,24 @@ class BluetoothTileService : TileService() {
         }
 
         // readIsEnabled returns null when the adapter is missing or its state cannot be read.
-        // Both cases mean there is no direction to toggle in, so report unavailable rather than
-        // guessing.
         val wasEnabled = BluetoothHelper.readIsEnabled(this)
 
         if (wasEnabled == null) {
-            applyTile(
-                Tile.STATE_UNAVAILABLE,
-                getString(R.string.tile_state_unavailable),
-                R.drawable.ic_qs_bluetooth_off
-            )
+            val mainIntent = Intent(this, MainActivity::class.java).apply {
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
+            }
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+                val pendingIntent = PendingIntent.getActivity(
+                    this,
+                    0,
+                    mainIntent,
+                    PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
+                )
+                startActivityAndCollapse(pendingIntent)
+            } else {
+                @Suppress("DEPRECATION")
+                startActivityAndCollapse(mainIntent)
+            }
             return
         }
 

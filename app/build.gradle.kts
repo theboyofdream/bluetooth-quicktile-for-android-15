@@ -20,7 +20,7 @@ android {
         // which allows programmatic Bluetooth enable/disable on Android 13, 14, and 15
         // without encountering the API 33+ system restriction or popup prompts.
         targetSdk = 32
-        versionCode = 1
+        versionCode = 2
         // Single source of truth for the version. The release workflow filters on this file and
         // tags the release v<contents>, so bumping it is the whole release action.
         versionName = rootProject.file("VERSION").readText().trim()

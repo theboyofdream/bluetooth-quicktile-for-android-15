@@ -100,11 +100,8 @@ object BluetoothHelper {
         val adapter = getAdapter(context) ?: return null
         return try {
             adapter.state
-        } catch (e: SecurityException) {
-            Log.w(TAG, "SecurityException while reading adapter state: ${e.message}")
-            null
-        } catch (e: IllegalStateException) {
-            Log.w(TAG, "IllegalStateException while reading adapter state: ${e.message}")
+        } catch (e: Exception) {
+            Log.w(TAG, "Error while reading adapter state: ${e.message}")
             null
         }
     }
@@ -120,11 +117,8 @@ object BluetoothHelper {
         val adapter = getAdapter(context) ?: return null
         return try {
             adapter.isEnabled
-        } catch (e: SecurityException) {
-            Log.w(TAG, "SecurityException while reading isEnabled: ${e.message}")
-            null
-        } catch (e: IllegalStateException) {
-            Log.w(TAG, "IllegalStateException while reading isEnabled: ${e.message}")
+        } catch (e: Exception) {
+            Log.w(TAG, "Error while reading isEnabled: ${e.message}")
             null
         }
     }
@@ -141,11 +135,8 @@ object BluetoothHelper {
         return try {
             @Suppress("DEPRECATION")
             adapter.enable()
-        } catch (e: SecurityException) {
-            Log.e(TAG, "SecurityException while enabling Bluetooth: ${e.message}")
-            false
-        } catch (e: IllegalStateException) {
-            Log.e(TAG, "IllegalStateException while enabling Bluetooth: ${e.message}")
+        } catch (e: Exception) {
+            Log.e(TAG, "Error while enabling Bluetooth: ${e.message}")
             false
         }
     }
@@ -161,11 +152,8 @@ object BluetoothHelper {
         return try {
             @Suppress("DEPRECATION")
             adapter.disable()
-        } catch (e: SecurityException) {
-            Log.e(TAG, "SecurityException while disabling Bluetooth: ${e.message}")
-            false
-        } catch (e: IllegalStateException) {
-            Log.e(TAG, "IllegalStateException while disabling Bluetooth: ${e.message}")
+        } catch (e: Exception) {
+            Log.e(TAG, "Error while disabling Bluetooth: ${e.message}")
             false
         }
     }
@@ -212,12 +200,38 @@ object BluetoothHelper {
             return
         }
 
+        if (!hasConnectPermission(context)) {
+            // Permission is not yet granted. Do not use STATE_UNAVAILABLE, because Android SystemUI
+            // disables click events on unavailable tiles, preventing the user from tapping the tile
+            // to launch the permission request in MainActivity.
+            onResolved(
+                TileDisplayInfo(
+                    label = label,
+                    subtitle = context.getString(R.string.tile_state_permission_required),
+                    state = Tile.STATE_INACTIVE,
+                    iconRes = R.drawable.ic_qs_bluetooth_off,
+                    condition = BluetoothCondition.UNAVAILABLE
+                )
+            )
+            return
+        }
+
         val state = readAdapterState(context)
+            ?: if (readIsEnabled(context) == true) BluetoothAdapter.STATE_ON
+            else if (readIsEnabled(context) == false) BluetoothAdapter.STATE_OFF
+            else null
 
         if (state == null) {
-            // State is unreadable. Report UNAVAILABLE rather than claiming the radio is off,
-            // which would be a specific false statement about the user's device.
-            onResolved(buildDisplayInfo(context, label, BluetoothCondition.UNAVAILABLE, null))
+            // State could not be read directly. Keep STATE_INACTIVE so it stays interactive.
+            onResolved(
+                TileDisplayInfo(
+                    label = label,
+                    subtitle = context.getString(R.string.tile_state_off),
+                    state = Tile.STATE_INACTIVE,
+                    iconRes = R.drawable.ic_qs_bluetooth_off,
+                    condition = BluetoothCondition.OFF
+                )
+            )
             return
         }
 
