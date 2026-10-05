@@ -13,6 +13,7 @@ import android.os.Looper
 import android.service.quicksettings.Tile
 import android.service.quicksettings.TileService
 import android.util.Log
+import androidx.core.content.ContextCompat
 
 /**
  * Dedicated Bluetooth Quick Settings Tile for Android 15.
@@ -193,7 +194,9 @@ class BluetoothTileService : TileService() {
             if (qsTile == null) return@resolveTileInfo
 
             tile.label = info.label
-            tile.subtitle = info.subtitle
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                tile.subtitle = info.subtitle
+            }
             tile.state = info.state
             tile.icon = Icon.createWithResource(this, info.iconRes)
             tile.contentDescription = getString(
@@ -209,7 +212,9 @@ class BluetoothTileService : TileService() {
     private fun applyTile(state: Int, subtitle: String, iconRes: Int) {
         val tile = qsTile ?: return
         tile.state = state
-        tile.subtitle = subtitle
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            tile.subtitle = subtitle
+        }
         tile.icon = Icon.createWithResource(this, iconRes)
         tile.contentDescription = getString(
             R.string.tile_content_description,
@@ -238,22 +243,15 @@ class BluetoothTileService : TileService() {
         reconcileRunnable = null
     }
 
-    /**
-     * These actions are all protected system broadcasts, so the receiver does not need to be
-     * exported. RECEIVER_NOT_EXPORTED still receives system broadcasts and is the safer default.
-     */
-    private fun receiverFlags(): Int {
-        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            Context.RECEIVER_NOT_EXPORTED
-        } else {
-            0
-        }
-    }
-
     private fun registerReceiverIfNeeded() {
         if (isReceiverRegistered) return
         try {
-            registerReceiver(bluetoothReceiver, buildBluetoothFilter(), receiverFlags())
+            ContextCompat.registerReceiver(
+                this,
+                bluetoothReceiver,
+                buildBluetoothFilter(),
+                ContextCompat.RECEIVER_NOT_EXPORTED
+            )
             isReceiverRegistered = true
         } catch (e: SecurityException) {
             // Registering for protected system broadcasts can be refused. Without the receiver

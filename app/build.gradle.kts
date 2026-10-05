@@ -26,6 +26,9 @@ android {
         versionName = rootProject.file("VERSION").readText().trim()
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+
+        buildConfigField("int", "TARGET_SDK", "32")
+        buildConfigField("int", "COMPILE_SDK", "35")
     }
 
     // Exposes TARGET_SDK and COMPILE_SDK to the app so user-facing text that mentions them

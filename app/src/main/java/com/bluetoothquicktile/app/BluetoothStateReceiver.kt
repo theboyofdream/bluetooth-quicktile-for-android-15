@@ -21,21 +21,7 @@ class BluetoothStateReceiver : BroadcastReceiver() {
 
     companion object {
         private const val TAG = "BluetoothStateReceiver"
-    }
 
-    override fun onReceive(context: Context, intent: Intent) {
-        val action = intent.action ?: return
-        if (BuildConfig.DEBUG) Log.d(TAG, "Received broadcast action: $action")
-
-        try {
-            val componentName = ComponentName(context, BluetoothTileService::class.java)
-            TileService.requestListeningState(context, componentName)
-        } catch (e: Exception) {
-            Log.e(TAG, "Failed to request tile listening state: ${e.message}")
-        }
-    }
-
-    companion object Actions {
         /**
          * The single definition of the Bluetooth actions this app observes. The manifest filter,
          * the TileService receiver and the MainActivity receiver all use this, so the three
@@ -51,6 +37,18 @@ class BluetoothStateReceiver : BroadcastReceiver() {
             addAction(BluetoothHeadset.ACTION_CONNECTION_STATE_CHANGED)
             addAction(BluetoothDevice.ACTION_ACL_CONNECTED)
             addAction(BluetoothDevice.ACTION_ACL_DISCONNECTED)
+        }
+    }
+
+    override fun onReceive(context: Context, intent: Intent) {
+        val action = intent.action ?: return
+        if (BuildConfig.DEBUG) Log.d(TAG, "Received broadcast action: $action")
+
+        try {
+            val componentName = ComponentName(context, BluetoothTileService::class.java)
+            TileService.requestListeningState(context, componentName)
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to request tile listening state: ${e.message}")
         }
     }
 }

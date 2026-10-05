@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<resources>
+<resources xmlns:tools="http://schemas.android.com/tools">
     <string name="app_name">Bluetooth Quicktile for android 15</string>
     <string name="tile_label">Bluetooth</string>
 
@@ -79,7 +79,7 @@
     <string name="tile_tip_long_press">Long-press opens settings</string>
 
     <!-- Educational footnote -->
-    <string name="footnote_how_it_works">Android 13+ normally blocks apps from switching Bluetooth directly and shows a multi-step prompt. This app targets SDK %1$d for its compatibility layer while compiling against SDK %2$d, so the tile can toggle instantly.</string>
+    <string name="footnote_how_it_works" tools:ignore="PluralsCandidate">Android 13+ normally blocks apps from switching Bluetooth directly and shows a multi-step prompt. This app targets SDK %1$d for its compatibility layer while compiling against SDK %2$d, so the tile can toggle instantly.</string>
 
     <!-- GitHub link -->
     <string name="github_label">GitHub</string>

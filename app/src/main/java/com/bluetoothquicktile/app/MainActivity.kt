@@ -315,13 +315,13 @@ class MainActivity : ComponentActivity() {
     private fun registerStateReceiver() {
         if (isStateReceiverRegistered) return
         val filter = BluetoothStateReceiver.newFilter()
-        val flags = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            Context.RECEIVER_NOT_EXPORTED
-        } else {
-            0
-        }
         try {
-            registerReceiver(stateReceiver, filter, flags)
+            ContextCompat.registerReceiver(
+                this,
+                stateReceiver,
+                filter,
+                ContextCompat.RECEIVER_NOT_EXPORTED
+            )
             isStateReceiverRegistered = true
         } catch (e: SecurityException) {
             Log.w(TAG, "Could not register Bluetooth receiver: ${e.message}")

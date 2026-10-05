@@ -60,6 +60,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.bluetoothquicktile.app.BuildConfig
+import com.bluetoothquicktile.app.BluetoothHelper.BluetoothCondition
 import com.bluetoothquicktile.app.R
 import com.bluetoothquicktile.app.ui.theme.WarnContainerDark
 import com.bluetoothquicktile.app.ui.theme.WarnContainerLight
