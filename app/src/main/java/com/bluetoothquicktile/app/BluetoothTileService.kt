@@ -2,16 +2,14 @@ package com.bluetoothquicktile.app
 
 import android.annotation.SuppressLint
 import android.app.PendingIntent
-import android.bluetooth.BluetoothA2dp
-import android.bluetooth.BluetoothAdapter
-import android.bluetooth.BluetoothDevice
-import android.bluetooth.BluetoothHeadset
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
 import android.graphics.drawable.Icon
 import android.os.Build
+import android.os.Handler
+import android.os.Looper
 import android.service.quicksettings.Tile
 import android.service.quicksettings.TileService
 import android.util.Log
@@ -32,43 +30,69 @@ class BluetoothTileService : TileService() {
 
     companion object {
         private const val TAG = "BluetoothTileService"
+
+        /**
+         * Delay before re-reading the adapter after a toggle. `enable()` and `disable()` report
+         * whether the request was accepted, not whether the radio finished changing, and
+         * `ACTION_STATE_CHANGED` can arrive a moment later. Half a second is long enough for a
+         * normal transition and short enough that the correction is not visible as a flicker.
+         */
+        private const val TOGGLE_RECONCILE_DELAY_MS = 500L
     }
 
     private var isReceiverRegistered = false
 
+    private val handler = Handler(Looper.getMainLooper())
+    private var reconcileRunnable: Runnable? = null
+
     private val bluetoothReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
-            Log.d(TAG, "Broadcast received: ${intent?.action}")
+            if (BuildConfig.DEBUG) Log.d(TAG, "Broadcast received: ${intent?.action}")
             refreshTile()
         }
     }
 
     override fun onTileAdded() {
         super.onTileAdded()
-        Log.d(TAG, "Tile added to Quick Settings panel")
+        if (BuildConfig.DEBUG) Log.d(TAG, "Tile added to Quick Settings panel")
         refreshTile()
     }
 
     override fun onStartListening() {
         super.onStartListening()
-        Log.d(TAG, "Tile started listening")
+        if (BuildConfig.DEBUG) Log.d(TAG, "Tile started listening")
         registerReceiverIfNeeded()
         refreshTile()
     }
 
     override fun onStopListening() {
         super.onStopListening()
-        Log.d(TAG, "Tile stopped listening")
+        if (BuildConfig.DEBUG) Log.d(TAG, "Tile stopped listening")
+        cancelPendingReconcile()
         unregisterReceiverIfNeeded()
+    }
+
+    override fun onTileRemoved() {
+        cancelPendingReconcile()
+        unregisterReceiverIfNeeded()
+        super.onTileRemoved()
+    }
+
+    override fun onDestroy() {
+        // onStopListening is not guaranteed to run before the service is torn down, so the
+        // receiver and any queued reconcile are cleaned up here as well.
+        cancelPendingReconcile()
+        unregisterReceiverIfNeeded()
+        super.onDestroy()
     }
 
     /**
      * Single tap directly executes the Bluetooth action without opening the multi-step sheet.
      */
-    @SuppressLint("MissingPermission", "StartActivityAndCollapseDeprecated")
+    @SuppressLint("StartActivityAndCollapseDeprecated")
     override fun onClick() {
         super.onClick()
-        Log.d(TAG, "Tile tapped")
+        if (BuildConfig.DEBUG) Log.d(TAG, "Tile tapped")
 
         val tile = qsTile ?: return
 
@@ -92,36 +116,50 @@ class BluetoothTileService : TileService() {
             return
         }
 
-        val adapter = BluetoothHelper.getAdapter(this)
-        if (adapter == null) {
-            tile.state = Tile.STATE_UNAVAILABLE
-            tile.subtitle = getString(R.string.tile_state_off)
-            tile.updateTile()
+        // readIsEnabled returns null when the adapter is missing or its state cannot be read.
+        // Both cases mean there is no direction to toggle in, so report unavailable rather than
+        // guessing.
+        val wasEnabled = BluetoothHelper.readIsEnabled(this)
+
+        if (wasEnabled == null) {
+            applyTile(
+                Tile.STATE_UNAVAILABLE,
+                getString(R.string.tile_state_unavailable),
+                R.drawable.ic_qs_bluetooth_off
+            )
             return
         }
 
         // 2. Perform direct single-tap toggle
-        if (adapter.isEnabled) {
+        if (wasEnabled) {
             // Turning OFF: Immediate optimistic UI update
-            tile.state = Tile.STATE_INACTIVE
-            tile.subtitle = getString(R.string.tile_state_off)
-            tile.icon = Icon.createWithResource(this, R.drawable.ic_qs_bluetooth_off)
-            tile.updateTile()
+            applyTile(
+                Tile.STATE_INACTIVE,
+                getString(R.string.tile_state_off),
+                R.drawable.ic_qs_bluetooth_off
+            )
 
             val success = BluetoothHelper.disableBluetooth(this)
-            Log.d(TAG, "Direct disableBluetooth result: $success")
+            if (BuildConfig.DEBUG) Log.d(TAG, "Direct disableBluetooth result: $success")
+
+            if (!success) {
+                // The radio refused the request. Re-read shortly so the tile does not keep the
+                // optimistic value that never became true.
+                scheduleReconcile()
+            }
         } else {
             // Turning ON: Immediate optimistic UI update
-            tile.state = Tile.STATE_ACTIVE
-            tile.subtitle = getString(R.string.tile_state_connecting)
-            tile.icon = Icon.createWithResource(this, R.drawable.ic_qs_bluetooth)
-            tile.updateTile()
+            applyTile(
+                Tile.STATE_ACTIVE,
+                getString(R.string.tile_state_connecting),
+                R.drawable.ic_qs_bluetooth
+            )
 
             val success = BluetoothHelper.enableBluetooth(this)
-            Log.d(TAG, "Direct enableBluetooth result: $success")
+            if (BuildConfig.DEBUG) Log.d(TAG, "Direct enableBluetooth result: $success")
 
-            // Fallback in case platform policy blocks enable()
             if (!success) {
+                // Fallback in case platform policy blocks enable()
                 val enableIntent = BluetoothHelper.createEnableIntent()
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
                     val pendingIntent = PendingIntent.getActivity(
@@ -136,10 +174,11 @@ class BluetoothTileService : TileService() {
                     startActivityAndCollapse(enableIntent)
                 }
             }
-        }
 
-        // Re-query and confirm state shortly after toggle
-        tile.updateTile()
+            // Whether or not the request was accepted, re-read the adapter shortly so the tile
+            // reflects what the radio actually did.
+            scheduleReconcile()
+        }
     }
 
     /**
@@ -148,44 +187,91 @@ class BluetoothTileService : TileService() {
     fun refreshTile() {
         val tile = qsTile ?: return
 
-        BluetoothHelper.resolveTileInfo(this) { info ->
+        BluetoothHelper.resolveTileInfo(this, getString(R.string.tile_label)) { info ->
+            // resolveTileInfo always completes on the main thread, but a queued reconcile can
+            // land after the tile stopped listening. Guard against updating a detached tile.
+            if (qsTile == null) return@resolveTileInfo
+
             tile.label = info.label
             tile.subtitle = info.subtitle
             tile.state = info.state
             tile.icon = Icon.createWithResource(this, info.iconRes)
-            tile.contentDescription = "${info.label}, ${info.subtitle}"
+            tile.contentDescription = getString(
+                R.string.tile_content_description,
+                info.label,
+                info.subtitle
+            )
             tile.updateTile()
-            Log.d(TAG, "Tile updated: label='${info.label}', subtitle='${info.subtitle}', state=${info.state}")
+            if (BuildConfig.DEBUG) Log.d(TAG, "Tile updated: label='${info.label}', subtitle='${info.subtitle}', state=${info.state}")
+        }
+    }
+
+    private fun applyTile(state: Int, subtitle: String, iconRes: Int) {
+        val tile = qsTile ?: return
+        tile.state = state
+        tile.subtitle = subtitle
+        tile.icon = Icon.createWithResource(this, iconRes)
+        tile.contentDescription = getString(
+            R.string.tile_content_description,
+            getString(R.string.tile_label),
+            subtitle
+        )
+        tile.updateTile()
+    }
+
+    /**
+     * Re-reads the adapter shortly after a toggle, so a refused request cannot leave the tile
+     * showing an optimistic value that never became true.
+     */
+    private fun scheduleReconcile() {
+        cancelPendingReconcile()
+        val runnable = Runnable {
+            reconcileRunnable = null
+            refreshTile()
+        }
+        reconcileRunnable = runnable
+        handler.postDelayed(runnable, TOGGLE_RECONCILE_DELAY_MS)
+    }
+
+    private fun cancelPendingReconcile() {
+        reconcileRunnable?.let { handler.removeCallbacks(it) }
+        reconcileRunnable = null
+    }
+
+    /**
+     * These actions are all protected system broadcasts, so the receiver does not need to be
+     * exported. RECEIVER_NOT_EXPORTED still receives system broadcasts and is the safer default.
+     */
+    private fun receiverFlags(): Int {
+        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            Context.RECEIVER_NOT_EXPORTED
+        } else {
+            0
         }
     }
 
     private fun registerReceiverIfNeeded() {
-        if (!isReceiverRegistered) {
-            val filter = IntentFilter().apply {
-                addAction(BluetoothAdapter.ACTION_STATE_CHANGED)
-                addAction(BluetoothAdapter.ACTION_CONNECTION_STATE_CHANGED)
-                addAction(BluetoothA2dp.ACTION_CONNECTION_STATE_CHANGED)
-                addAction(BluetoothHeadset.ACTION_CONNECTION_STATE_CHANGED)
-                addAction(BluetoothDevice.ACTION_ACL_CONNECTED)
-                addAction(BluetoothDevice.ACTION_ACL_DISCONNECTED)
-            }
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                registerReceiver(bluetoothReceiver, filter, RECEIVER_EXPORTED)
-            } else {
-                registerReceiver(bluetoothReceiver, filter)
-            }
+        if (isReceiverRegistered) return
+        try {
+            registerReceiver(bluetoothReceiver, buildBluetoothFilter(), receiverFlags())
             isReceiverRegistered = true
+        } catch (e: SecurityException) {
+            // Registering for protected system broadcasts can be refused. Without the receiver
+            // the tile still updates on onStartListening and after every tap.
+            Log.w(TAG, "Could not register Bluetooth receiver: ${e.message}")
         }
     }
 
     private fun unregisterReceiverIfNeeded() {
-        if (isReceiverRegistered) {
-            try {
-                unregisterReceiver(bluetoothReceiver)
-            } catch (e: Exception) {
-                Log.w(TAG, "Error unregistering receiver: ${e.message}")
-            }
+        if (!isReceiverRegistered) return
+        try {
+            unregisterReceiver(bluetoothReceiver)
+        } catch (e: Exception) {
+            Log.w(TAG, "Error unregistering receiver: ${e.message}")
+        } finally {
             isReceiverRegistered = false
         }
     }
+
+    private fun buildBluetoothFilter(): IntentFilter = BluetoothStateReceiver.newFilter()
 }

@@ -10,6 +10,8 @@ import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Build
+import android.os.Handler
+import android.os.Looper
 import android.service.quicksettings.Tile
 import android.util.Log
 import androidx.core.content.ContextCompat
@@ -26,11 +28,42 @@ object BluetoothHelper {
 
     private const val TAG = "BluetoothHelper"
 
+    /** How long to wait for a Bluetooth profile proxy before giving up and reporting no device. */
+    private const val PROFILE_PROXY_TIMEOUT_MS = 1_500L
+
+    /** Handler token for the profile-proxy timeout, so it can be cancelled. */
+    private val TIMEOUT_TOKEN = Any()
+
+    /**
+     * The Bluetooth condition this app is reporting, as a value rather than a display string.
+     *
+     * Callers switch on this instead of comparing subtitles, so a paired device named "On" or
+     * "Connecting..." cannot be mistaken for a fixed state, and translating the subtitles cannot
+     * desynchronise the UI from the adapter.
+     */
+    enum class BluetoothCondition {
+        /** No adapter on this device, or its state could not be read at all. */
+        UNAVAILABLE,
+
+        /** Adapter is off, or is turning off. */
+        OFF,
+
+        /** Adapter is on but no profile is connected and none is connecting. */
+        ON,
+
+        /** Adapter is turning on, or a profile is currently connecting. */
+        CONNECTING,
+
+        /** A profile is connected; [TileDisplayInfo.subtitle] holds the device name. */
+        CONNECTED
+    }
+
     data class TileDisplayInfo(
-        val label: String = "Bluetooth",
+        val label: String,
         val subtitle: String,
         val state: Int,
-        val iconRes: Int
+        val iconRes: Int,
+        val condition: BluetoothCondition
     )
 
     /**
@@ -56,18 +89,63 @@ object BluetoothHelper {
     }
 
     /**
+     * Reads [BluetoothAdapter.getState], or returns null when it cannot be read.
+     *
+     * `getState()` needs BLUETOOTH_CONNECT on API 31+, so this never throws. Callers use null to
+     * mean "unknown" and must not treat it as STATE_OFF.
+     */
+    @SuppressLint("MissingPermission")
+    fun readAdapterState(context: Context): Int? {
+        if (!hasConnectPermission(context)) return null
+        val adapter = getAdapter(context) ?: return null
+        return try {
+            adapter.state
+        } catch (e: SecurityException) {
+            Log.w(TAG, "SecurityException while reading adapter state: ${e.message}")
+            null
+        } catch (e: IllegalStateException) {
+            Log.w(TAG, "IllegalStateException while reading adapter state: ${e.message}")
+            null
+        }
+    }
+
+    /**
+     * Reads [BluetoothAdapter.isEnabled], or returns null when it cannot be read.
+     *
+     * `isEnabled` needs BLUETOOTH_CONNECT on API 31+, so this never throws.
+     */
+    @SuppressLint("MissingPermission")
+    fun readIsEnabled(context: Context): Boolean? {
+        if (!hasConnectPermission(context)) return null
+        val adapter = getAdapter(context) ?: return null
+        return try {
+            adapter.isEnabled
+        } catch (e: SecurityException) {
+            Log.w(TAG, "SecurityException while reading isEnabled: ${e.message}")
+            null
+        } catch (e: IllegalStateException) {
+            Log.w(TAG, "IllegalStateException while reading isEnabled: ${e.message}")
+            null
+        }
+    }
+
+    /**
      * Directly enables Bluetooth.
      * Uses BluetoothAdapter.enable(), which functions directly without user prompt when
      * running in backward compatibility mode.
      */
     @SuppressLint("MissingPermission")
     fun enableBluetooth(context: Context): Boolean {
+        if (!hasConnectPermission(context)) return false
         val adapter = getAdapter(context) ?: return false
         return try {
             @Suppress("DEPRECATION")
             adapter.enable()
         } catch (e: SecurityException) {
             Log.e(TAG, "SecurityException while enabling Bluetooth: ${e.message}")
+            false
+        } catch (e: IllegalStateException) {
+            Log.e(TAG, "IllegalStateException while enabling Bluetooth: ${e.message}")
             false
         }
     }
@@ -78,12 +156,16 @@ object BluetoothHelper {
      */
     @SuppressLint("MissingPermission")
     fun disableBluetooth(context: Context): Boolean {
+        if (!hasConnectPermission(context)) return false
         val adapter = getAdapter(context) ?: return false
         return try {
             @Suppress("DEPRECATION")
             adapter.disable()
         } catch (e: SecurityException) {
             Log.e(TAG, "SecurityException while disabling Bluetooth: ${e.message}")
+            false
+        } catch (e: IllegalStateException) {
+            Log.e(TAG, "IllegalStateException while disabling Bluetooth: ${e.message}")
             false
         }
     }
@@ -93,124 +175,136 @@ object BluetoothHelper {
      * Single tap action:
      * - If OFF or TURNING_OFF: enables Bluetooth.
      * - If ON or TURNING_ON or CONNECTED: disables Bluetooth.
+     *
+     * Returns false when the state could not be read, so a missing permission never reads as
+     * "off" and accidentally triggers an enable.
      */
-    @SuppressLint("MissingPermission")
     fun toggleBluetooth(context: Context): Boolean {
-        val adapter = getAdapter(context) ?: return false
-        return if (adapter.isEnabled) {
-            disableBluetooth(context)
-        } else {
-            enableBluetooth(context)
+        return when (readIsEnabled(context)) {
+            true -> disableBluetooth(context)
+            false -> enableBluetooth(context)
+            null -> {
+                Log.w(TAG, "toggleBluetooth: adapter state unknown, not toggling")
+                false
+            }
         }
     }
 
     /**
      * Resolves the current tile state, label, subtitle, and icon.
      *
-     * The subtitle strictly matches the requirement:
-     * - "Off"
-     * - "On"
-     * - "Connecting…"
-     * - "<Device Name>"
+     * The subtitle is exactly one of the four values the tile spec allows: "Off", "On",
+     * "Connecting…", or "<Device Name>".
+     *
+     * [onResolved] is always invoked exactly once, on the main thread. When the connected device
+     * name cannot be determined within the proxy timeout, it fires with the best-known state
+     * rather than never firing, so a tile can never be left showing a stale subtitle.
      */
-    @SuppressLint("MissingPermission")
     fun resolveTileInfo(
         context: Context,
+        label: String,
         onResolved: (TileDisplayInfo) -> Unit
     ) {
         val adapter = getAdapter(context)
 
         if (adapter == null) {
-            onResolved(
-                TileDisplayInfo(
-                    subtitle = context.getString(R.string.tile_state_off),
-                    state = Tile.STATE_UNAVAILABLE,
-                    iconRes = R.drawable.ic_qs_bluetooth_off
-                )
-            )
+            onResolved(buildDisplayInfo(context, label, BluetoothCondition.UNAVAILABLE, null))
             return
         }
 
-        val hasPermission = hasConnectPermission(context)
-        val state = try {
-            adapter.state
-        } catch (e: SecurityException) {
-            BluetoothAdapter.STATE_OFF
+        val state = readAdapterState(context)
+
+        if (state == null) {
+            // State is unreadable. Report UNAVAILABLE rather than claiming the radio is off,
+            // which would be a specific false statement about the user's device.
+            onResolved(buildDisplayInfo(context, label, BluetoothCondition.UNAVAILABLE, null))
+            return
         }
 
         when (state) {
-            BluetoothAdapter.STATE_OFF, BluetoothAdapter.STATE_TURNING_OFF -> {
-                onResolved(
-                    TileDisplayInfo(
-                        subtitle = context.getString(R.string.tile_state_off),
-                        state = Tile.STATE_INACTIVE,
-                        iconRes = R.drawable.ic_qs_bluetooth_off
-                    )
-                )
-            }
+            BluetoothAdapter.STATE_OFF, BluetoothAdapter.STATE_TURNING_OFF ->
+                onResolved(buildDisplayInfo(context, label, BluetoothCondition.OFF, null))
 
-            BluetoothAdapter.STATE_TURNING_ON -> {
-                onResolved(
-                    TileDisplayInfo(
-                        subtitle = context.getString(R.string.tile_state_connecting),
-                        state = Tile.STATE_ACTIVE,
-                        iconRes = R.drawable.ic_qs_bluetooth
-                    )
-                )
-            }
+            BluetoothAdapter.STATE_TURNING_ON ->
+                onResolved(buildDisplayInfo(context, label, BluetoothCondition.CONNECTING, null))
 
             BluetoothAdapter.STATE_ON -> {
-                if (!hasPermission) {
-                    // Without BLUETOOTH_CONNECT on Android 12+, we can only report "On"
-                    onResolved(
-                        TileDisplayInfo(
-                            subtitle = context.getString(R.string.tile_state_on),
-                            state = Tile.STATE_ACTIVE,
-                            iconRes = R.drawable.ic_qs_bluetooth
-                        )
-                    )
+                if (!hasConnectPermission(context)) {
+                    onResolved(buildDisplayInfo(context, label, BluetoothCondition.ON, null))
                     return
                 }
-
-                // Query profile connection states
                 queryConnectedDevice(context, adapter) { deviceName, isConnecting ->
-                    val subtitle = when {
-                        !deviceName.isNullOrEmpty() -> deviceName
-                        isConnecting -> context.getString(R.string.tile_state_connecting)
-                        else -> context.getString(R.string.tile_state_on)
+                    val condition = when {
+                        deviceName != null -> BluetoothCondition.CONNECTED
+                        isConnecting -> BluetoothCondition.CONNECTING
+                        else -> BluetoothCondition.ON
                     }
-
-                    val icon = if (!deviceName.isNullOrEmpty()) {
-                        R.drawable.ic_qs_bluetooth_connected
-                    } else {
-                        R.drawable.ic_qs_bluetooth
-                    }
-
-                    onResolved(
-                        TileDisplayInfo(
-                            subtitle = subtitle,
-                            state = Tile.STATE_ACTIVE,
-                            iconRes = icon
-                        )
-                    )
+                    onResolved(buildDisplayInfo(context, label, condition, deviceName))
                 }
             }
 
-            else -> {
-                onResolved(
-                    TileDisplayInfo(
-                        subtitle = context.getString(R.string.tile_state_off),
-                        state = Tile.STATE_INACTIVE,
-                        iconRes = R.drawable.ic_qs_bluetooth_off
-                    )
-                )
-            }
+            else -> onResolved(buildDisplayInfo(context, label, BluetoothCondition.OFF, null))
         }
     }
 
     /**
+     * Resolves the subtitle, Tile state, and icon for a known [condition].
+     */
+    private fun buildDisplayInfo(
+        context: Context,
+        label: String,
+        condition: BluetoothCondition,
+        deviceName: String?
+    ): TileDisplayInfo = when (condition) {
+        BluetoothCondition.UNAVAILABLE -> TileDisplayInfo(
+            label = label,
+            subtitle = context.getString(R.string.tile_state_unavailable),
+            state = Tile.STATE_UNAVAILABLE,
+            iconRes = R.drawable.ic_qs_bluetooth_off,
+            condition = condition
+        )
+
+        BluetoothCondition.OFF -> TileDisplayInfo(
+            label = label,
+            subtitle = context.getString(R.string.tile_state_off),
+            state = Tile.STATE_INACTIVE,
+            iconRes = R.drawable.ic_qs_bluetooth_off,
+            condition = condition
+        )
+
+        BluetoothCondition.ON -> TileDisplayInfo(
+            label = label,
+            subtitle = context.getString(R.string.tile_state_on),
+            state = Tile.STATE_ACTIVE,
+            iconRes = R.drawable.ic_qs_bluetooth,
+            condition = condition
+        )
+
+        BluetoothCondition.CONNECTING -> TileDisplayInfo(
+            label = label,
+            subtitle = context.getString(R.string.tile_state_connecting),
+            state = Tile.STATE_ACTIVE,
+            iconRes = R.drawable.ic_qs_bluetooth,
+            condition = condition
+        )
+
+        BluetoothCondition.CONNECTED -> TileDisplayInfo(
+            label = label,
+            subtitle = deviceName ?: context.getString(R.string.tile_state_on),
+            state = Tile.STATE_ACTIVE,
+            iconRes = R.drawable.ic_qs_bluetooth_connected,
+            condition = condition
+        )
+    }
+
+    /**
      * Queries connected devices using A2DP and Headset profile proxies.
-     * Discovers active device names or whether any profile is currently connecting.
+     *
+     * Always invokes [callback] exactly once, within [PROFILE_PROXY_TIMEOUT_MS] at the latest.
+     *
+     * The two proxies are tracked separately. Closing the A2DP proxy fires
+     * `onServiceDisconnected` for it, and treating that as an answer would discard the HEADSET
+     * result and leave every headset-only device showing "On" instead of its name.
      */
     @SuppressLint("MissingPermission")
     private fun queryConnectedDevice(
@@ -221,12 +315,14 @@ object BluetoothHelper {
         val a2dpState = try {
             adapter.getProfileConnectionState(BluetoothProfile.A2DP)
         } catch (e: Exception) {
+            Log.w(TAG, "A2DP connection state unavailable: ${e.message}")
             BluetoothProfile.STATE_DISCONNECTED
         }
 
         val headsetState = try {
             adapter.getProfileConnectionState(BluetoothProfile.HEADSET)
         } catch (e: Exception) {
+            Log.w(TAG, "Headset connection state unavailable: ${e.message}")
             BluetoothProfile.STATE_DISCONNECTED
         }
 
@@ -241,74 +337,117 @@ object BluetoothHelper {
             return
         }
 
-        // Connect to A2DP profile proxy to extract the connected device name
-        var resolved = false
+        val handler = Handler(Looper.getMainLooper())
+
+        // Delivered once. The timeout guarantees the callback fires even when a proxy request is
+        // refused or the profile service never responds.
+        var delivered = false
+
+        fun deliver(deviceName: String?) {
+            if (delivered) return
+            delivered = true
+            handler.removeCallbacksAndMessages(TIMEOUT_TOKEN)
+            callback(deviceName, isConnecting)
+        }
+
+        // True while the HEADSET fallback is outstanding. An A2DP disconnect is expected and
+        // must not count as a result, because we caused it by closing that proxy.
+        var awaitingHeadsetFallback = false
+
         val listener = object : BluetoothProfile.ServiceListener {
             override fun onServiceConnected(profile: Int, proxy: BluetoothProfile) {
-                if (resolved) return
-                try {
-                    val connectedDevices = proxy.connectedDevices
-                    if (!connectedDevices.isNullOrEmpty()) {
-                        val device = connectedDevices.first()
-                        val name = getDeviceDisplayName(device)
-                        resolved = true
-                        callback(name, false)
-                    } else if (profile == BluetoothProfile.A2DP) {
-                        // Try querying HEADSET profile if A2DP had no device list
-                        adapter.getProfileProxy(context, this, BluetoothProfile.HEADSET)
-                        return
-                    } else {
-                        resolved = true
-                        callback(null, isConnecting)
-                    }
-                } catch (e: SecurityException) {
-                    resolved = true
-                    callback(null, isConnecting)
-                } finally {
-                    try {
-                        adapter.closeProfileProxy(profile, proxy)
-                    } catch (ignored: Exception) {
-                    }
+                val deviceName = try {
+                    proxy.connectedDevices?.firstOrNull()?.let { getDeviceDisplayName(it) }
+                } catch (e: Exception) {
+                    Log.w(TAG, "Error reading connectedDevices for profile $profile: ${e.message}")
+                    null
                 }
+
+                when {
+                    deviceName != null -> deliver(deviceName)
+
+                    profile == BluetoothProfile.A2DP -> {
+                        // A2DP is connected but reports no device. Ask HEADSET before answering.
+                        awaitingHeadsetFallback = true
+                        val requested = try {
+                            adapter.getProfileProxy(context, this, BluetoothProfile.HEADSET)
+                        } catch (e: Exception) {
+                            Log.w(TAG, "HEADSET proxy request failed: ${e.message}")
+                            false
+                        }
+                        if (!requested) deliver(null)
+                    }
+
+                    else -> deliver(null)
+                }
+
+                closeProxyQuietly(adapter, profile, proxy)
             }
 
             override fun onServiceDisconnected(profile: Int) {
-                if (!resolved) {
-                    resolved = true
-                    callback(null, isConnecting)
+                // The A2DP disconnect here is self-inflicted, since we just closed that proxy.
+                if (profile == BluetoothProfile.HEADSET && awaitingHeadsetFallback) {
+                    deliver(null)
                 }
             }
         }
+
+        handler.postAtTime({
+            if (!delivered) Log.w(TAG, "Profile proxy timed out, reporting no connected device")
+            deliver(null)
+        }, TIMEOUT_TOKEN, android.os.SystemClock.uptimeMillis() + PROFILE_PROXY_TIMEOUT_MS)
 
         val requested = try {
             adapter.getProfileProxy(context, listener, BluetoothProfile.A2DP)
         } catch (e: Exception) {
+            Log.w(TAG, "A2DP proxy request failed: ${e.message}")
             false
         }
 
-        if (!requested) {
-            callback(null, isConnecting)
+        if (!requested) deliver(null)
+    }
+
+    private fun closeProxyQuietly(adapter: BluetoothAdapter, profile: Int, proxy: BluetoothProfile) {
+        try {
+            adapter.closeProfileProxy(profile, proxy)
+        } catch (e: Exception) {
+            Log.w(TAG, "Error closing profile proxy $profile: ${e.message}")
         }
     }
 
     /**
      * Resolves the human-readable name of a BluetoothDevice.
+     *
+     * Returns null when neither the name, the alias, nor the address can be read. `getName` and
+     * `getAddress` both need BLUETOOTH_CONNECT on API 31+, so every fallback is guarded rather
+     * than rethrowing the exception being handled.
      */
     @SuppressLint("MissingPermission")
-    fun getDeviceDisplayName(device: BluetoothDevice): String {
-        return try {
-            val name = device.name
-            if (!name.isNullOrBlank()) {
-                name
-            } else {
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-                    device.alias ?: device.address
-                } else {
-                    device.address
-                }
+    fun getDeviceDisplayName(device: BluetoothDevice): String? {
+        val name = try {
+            device.name
+        } catch (e: Exception) {
+            Log.w(TAG, "Could not read device name: ${e.message}")
+            null
+        }
+
+        if (!name.isNullOrBlank()) return name
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            val alias = try {
+                device.alias
+            } catch (e: Exception) {
+                Log.w(TAG, "Could not read device alias: ${e.message}")
+                null
             }
-        } catch (e: SecurityException) {
+            if (!alias.isNullOrBlank()) return alias
+        }
+
+        return try {
             device.address
+        } catch (e: Exception) {
+            Log.w(TAG, "Could not read device address: ${e.message}")
+            null
         }
     }
 

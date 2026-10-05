@@ -27,18 +27,11 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.rounded.Add
-import androidx.compose.material.icons.rounded.Bluetooth
-import androidx.compose.material.icons.rounded.BluetoothConnected
-import androidx.compose.material.icons.rounded.Lock
-import androidx.compose.material.icons.rounded.NearMe
-import androidx.compose.material.icons.rounded.PowerSettingsNew
-import androidx.compose.material.icons.rounded.Settings
-import androidx.compose.material.icons.rounded.Wifi
+import androidx.compose.material3.ripple
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Icon
@@ -51,20 +44,22 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.bluetoothquicktile.app.BuildConfig
 import com.bluetoothquicktile.app.R
 import com.bluetoothquicktile.app.ui.theme.WarnContainerDark
 import com.bluetoothquicktile.app.ui.theme.WarnContainerLight
@@ -73,9 +68,8 @@ import com.bluetoothquicktile.app.ui.theme.WarnTextLight
 
 @Composable
 fun MainScreen(
-    isBtOn: Boolean,
+    condition: BluetoothCondition,
     connectedDeviceName: String?,
-    isConnecting: Boolean,
     systemPermissionState: PermissionUiState,
     onToggleBluetooth: () -> Unit,
     onRequestPermission: () -> Unit,
@@ -87,7 +81,14 @@ fun MainScreen(
 ) {
     val dark = isSystemInDarkTheme()
     val isPermitted = systemPermissionState == PermissionUiState.GRANTED
-    val effectiveBtOn = isBtOn && isPermitted
+
+    // Without the permission the adapter cannot be read at all, so the app reports "unknown"
+    // rather than asserting that Bluetooth is off.
+    val isBtOn = condition == BluetoothCondition.ON ||
+            condition == BluetoothCondition.CONNECTING ||
+            condition == BluetoothCondition.CONNECTED
+    val isConnecting = condition == BluetoothCondition.CONNECTING
+    val isReadable = condition != BluetoothCondition.UNAVAILABLE
 
     Scaffold(
         snackbarHost = { SnackbarHost(snackbarHostState) },
@@ -109,7 +110,7 @@ fun MainScreen(
                 verticalArrangement = Arrangement.spacedBy(4.dp)
             ) {
                 Text(
-                    text = "Bluetooth Quicktile",
+                    text = stringResource(R.string.header_title),
                     style = MaterialTheme.typography.headlineMedium.copy(
                         fontSize = 32.sp,
                         fontWeight = FontWeight.Bold,
@@ -118,7 +119,7 @@ fun MainScreen(
                     )
                 )
                 Text(
-                    text = "Toggle Bluetooth from your Quick Settings",
+                    text = stringResource(R.string.header_subtitle),
                     style = MaterialTheme.typography.bodyLarge.copy(
                         fontSize = 15.sp,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
@@ -127,8 +128,10 @@ fun MainScreen(
             }
 
             // 2. Hero Card
+            val heroActive = isBtOn && isPermitted
+
             val heroBg by animateColorAsState(
-                if (effectiveBtOn && isPermitted) MaterialTheme.colorScheme.primaryContainer
+                if (heroActive) MaterialTheme.colorScheme.primaryContainer
                 else MaterialTheme.colorScheme.surfaceContainer,
                 animationSpec = tween(300),
                 label = "heroBg"
@@ -148,7 +151,7 @@ fun MainScreen(
                     modifier = Modifier.size(148.dp),
                     contentAlignment = Alignment.Center
                 ) {
-                    if (effectiveBtOn && isPermitted) {
+                    if (heroActive) {
                         val transition = rememberInfiniteTransition(label = "pulseTransition")
                         val pulse1Scale by transition.animateFloat(
                             initialValue = 0.70f,
@@ -208,18 +211,18 @@ fun MainScreen(
 
                     // Central Bluetooth Orb
                     val cornerRadius by animateDpAsState(
-                        if (effectiveBtOn && isPermitted) 56.dp else 36.dp,
+                        if (heroActive) 56.dp else 36.dp,
                         animationSpec = tween(350),
                         label = "orbCornerRadius"
                     )
                     val orbBg by animateColorAsState(
-                        if (effectiveBtOn && isPermitted) MaterialTheme.colorScheme.primary
+                        if (heroActive) MaterialTheme.colorScheme.primary
                         else MaterialTheme.colorScheme.surfaceContainerHigh,
                         animationSpec = tween(300),
                         label = "orbBg"
                     )
                     val orbIconTint by animateColorAsState(
-                        if (effectiveBtOn && isPermitted) MaterialTheme.colorScheme.onPrimary
+                        if (heroActive) MaterialTheme.colorScheme.onPrimary
                         else MaterialTheme.colorScheme.outline,
                         animationSpec = tween(300),
                         label = "orbIconTint"
@@ -233,33 +236,41 @@ fun MainScreen(
                         label = "orbPressScale"
                     )
 
+                    val toggleLabel = stringResource(R.string.hero_toggle_bluetooth)
+                    val permissionLabel = stringResource(R.string.action_allow_nearby)
+
                     Box(
                         modifier = Modifier
                             .size(112.dp)
                             .scale(orbScale)
                             .clip(RoundedCornerShape(cornerRadius))
                             .background(orbBg)
-                            .clickable(
+                            // selectable gives the node a button-like role and an onClick
+                            // semantic, which a bare clickable does not expose to TalkBack.
+                            .selectable(
+                                selected = false,
                                 interactionSource = interactionSource,
-                                indication = null
-                            ) {
-                                if (!isPermitted) {
-                                    onRequestPermission()
-                                } else {
-                                    onToggleBluetooth()
+                                indication = ripple(),
+                                enabled = true,
+                                role = Role.Button,
+                                onClick = {
+                                    if (isPermitted) onToggleBluetooth() else onRequestPermission()
                                 }
+                            )
+                            .semantics {
+                                contentDescription = if (isPermitted) toggleLabel else permissionLabel
                             },
                         contentAlignment = Alignment.Center
                     ) {
-                        val icon = if (!connectedDeviceName.isNullOrEmpty() && effectiveBtOn) {
-                            Icons.Rounded.BluetoothConnected
+                        val icon = if (connectedDeviceName != null && heroActive) {
+                            AppIcons.BluetoothConnected
                         } else {
-                            Icons.Rounded.Bluetooth
+                            AppIcons.Bluetooth
                         }
 
                         Icon(
-                            imageVector = icon,
-                            contentDescription = "Toggle Bluetooth",
+                            painter = icon,
+                            contentDescription = null,
                             tint = orbIconTint,
                             modifier = Modifier.size(54.dp)
                         )
@@ -277,12 +288,15 @@ fun MainScreen(
                                 .size(40.dp)
                                 .clip(CircleShape)
                                 .background(badgeBg)
-                                .border(3.dp, heroBg, CircleShape),
+                                .border(3.dp, heroBg, CircleShape)
+                                .semantics {
+                                    contentDescription = ""
+                                },
                             contentAlignment = Alignment.Center
                         ) {
                             Icon(
-                                imageVector = Icons.Rounded.Lock,
-                                contentDescription = "Permission Needed",
+                                painter = AppIcons.Lock,
+                                contentDescription = stringResource(R.string.hero_lock_badge),
                                 tint = badgeTint,
                                 modifier = Modifier.size(20.dp)
                             )
@@ -295,13 +309,19 @@ fun MainScreen(
                     horizontalAlignment = Alignment.CenterHorizontally,
                     verticalArrangement = Arrangement.spacedBy(4.dp)
                 ) {
-                    val stateTitle = if (effectiveBtOn && isPermitted) "Bluetooth is on" else "Bluetooth is off"
+                    val stateTitle = when {
+                        !isPermitted -> stringResource(R.string.hero_title_unknown)
+                        isBtOn -> stringResource(R.string.hero_title_on)
+                        else -> stringResource(R.string.hero_title_off)
+                    }
                     val subTitle = when {
-                        !isPermitted -> "Allow nearby devices to control it"
-                        effectiveBtOn && !connectedDeviceName.isNullOrEmpty() -> "Connected to $connectedDeviceName"
-                        effectiveBtOn && isConnecting -> "Connecting to device…"
-                        effectiveBtOn -> "No device connected"
-                        else -> "Turn on to connect devices"
+                        !isPermitted -> stringResource(R.string.hero_subtitle_needs_permission)
+                        !isReadable -> stringResource(R.string.hero_subtitle_unreadable)
+                        connectedDeviceName != null ->
+                            stringResource(R.string.hero_subtitle_connected, connectedDeviceName)
+                        isConnecting -> stringResource(R.string.hero_subtitle_connecting)
+                        isBtOn -> stringResource(R.string.hero_subtitle_no_device)
+                        else -> stringResource(R.string.hero_subtitle_turn_on)
                     }
 
                     Text(
@@ -309,7 +329,7 @@ fun MainScreen(
                         style = MaterialTheme.typography.headlineMedium.copy(
                             fontSize = 30.sp,
                             fontWeight = FontWeight.SemiBold,
-                            color = if (effectiveBtOn && isPermitted) MaterialTheme.colorScheme.onPrimaryContainer
+                            color = if (heroActive) MaterialTheme.colorScheme.onPrimaryContainer
                             else MaterialTheme.colorScheme.onSurface
                         ),
                         textAlign = TextAlign.Center
@@ -319,11 +339,11 @@ fun MainScreen(
                         text = subTitle,
                         style = MaterialTheme.typography.bodyLarge.copy(
                             fontSize = 15.sp,
-                            color = if (effectiveBtOn && isPermitted) MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.85f)
+                            color = if (heroActive) MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.85f)
                             else MaterialTheme.colorScheme.onSurfaceVariant
                         ),
                         textAlign = TextAlign.Center,
-                        maxLines = 1,
+                        maxLines = 2,
                         overflow = TextOverflow.Ellipsis
                     )
                 }
@@ -338,7 +358,7 @@ fun MainScreen(
                     // Main Split (Turn On / Turn Off / Allow)
                     Button(
                         onClick = {
-                            if (!isPermitted) onRequestPermission() else onToggleBluetooth()
+                            if (isPermitted) onToggleBluetooth() else onRequestPermission()
                         },
                         modifier = Modifier
                             .weight(1f)
@@ -359,18 +379,18 @@ fun MainScreen(
                             horizontalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
                             val buttonIcon = when {
-                                !isPermitted -> Icons.Rounded.NearMe
-                                effectiveBtOn -> Icons.Rounded.PowerSettingsNew
-                                else -> Icons.Rounded.Bluetooth
+                                !isPermitted -> AppIcons.NearMe
+                                isBtOn -> AppIcons.PowerSettingsNew
+                                else -> AppIcons.Bluetooth
                             }
                             val buttonLabel = when {
-                                !isPermitted -> "Allow nearby devices"
-                                effectiveBtOn -> "Turn off"
-                                else -> "Turn on"
+                                !isPermitted -> stringResource(R.string.action_allow_nearby)
+                                isBtOn -> stringResource(R.string.action_turn_off)
+                                else -> stringResource(R.string.action_turn_on)
                             }
 
                             Icon(
-                                imageVector = buttonIcon,
+                                painter = buttonIcon,
                                 contentDescription = null,
                                 modifier = Modifier.size(20.dp)
                             )
@@ -400,8 +420,8 @@ fun MainScreen(
                         )
                     ) {
                         Icon(
-                            imageVector = Icons.Rounded.Settings,
-                            contentDescription = "Bluetooth Settings",
+                            painter = AppIcons.Settings,
+                            contentDescription = stringResource(R.string.action_open_bluetooth_settings),
                             modifier = Modifier.size(24.dp)
                         )
                     }
@@ -426,7 +446,7 @@ fun MainScreen(
             ) {
                 Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                     Text(
-                        text = "Quick Settings tile",
+                        text = stringResource(R.string.tile_card_title),
                         style = MaterialTheme.typography.titleMedium.copy(
                             fontSize = 18.sp,
                             fontWeight = FontWeight.SemiBold,
@@ -434,7 +454,7 @@ fun MainScreen(
                         )
                     )
                     Text(
-                        text = "Toggle Bluetooth from your shade without opening the app.",
+                        text = stringResource(R.string.tile_card_description),
                         style = MaterialTheme.typography.bodyMedium.copy(
                             fontSize = 14.sp,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
@@ -448,7 +468,7 @@ fun MainScreen(
                     horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
                     // Bluetooth Quick Tile
-                    val tileActive = effectiveBtOn && isPermitted
+                    val tileActive = heroActive
                     val tileBg by animateColorAsState(
                         if (tileActive) MaterialTheme.colorScheme.primary
                         else MaterialTheme.colorScheme.surfaceContainerHigh,
@@ -464,9 +484,13 @@ fun MainScreen(
                             .height(64.dp)
                             .clip(RoundedCornerShape(32.dp))
                             .background(tileBg)
-                            .clickable {
-                                if (!isPermitted) onRequestPermission() else onToggleBluetooth()
-                            }
+                            .selectable(
+                                selected = false,
+                                role = Role.Button,
+                                onClick = {
+                                    if (isPermitted) onToggleBluetooth() else onRequestPermission()
+                                }
+                            )
                             .padding(horizontal = 14.dp),
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(10.dp)
@@ -479,10 +503,10 @@ fun MainScreen(
                             contentAlignment = Alignment.Center
                         ) {
                             Icon(
-                                imageVector = if (!connectedDeviceName.isNullOrEmpty() && tileActive) {
-                                    Icons.Rounded.BluetoothConnected
+                                painter = if (connectedDeviceName != null && tileActive) {
+                                    AppIcons.BluetoothConnected
                                 } else {
-                                    Icons.Rounded.Bluetooth
+                                    AppIcons.Bluetooth
                                 },
                                 contentDescription = null,
                                 tint = tileTextColor,
@@ -492,20 +516,21 @@ fun MainScreen(
 
                         Column(modifier = Modifier.weight(1f)) {
                             Text(
-                                text = "Bluetooth",
+                                text = stringResource(R.string.tile_preview_bluetooth),
                                 style = MaterialTheme.typography.bodyMedium.copy(
                                     fontSize = 14.sp,
                                     fontWeight = FontWeight.Medium,
                                     color = tileTextColor
                                 ),
-                                maxLines = 1
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
                             )
                             val qsSub = when {
-                                !isPermitted -> "Needs permission"
-                                tileActive && !connectedDeviceName.isNullOrEmpty() -> connectedDeviceName
-                                tileActive && isConnecting -> "Connecting…"
-                                tileActive -> "On"
-                                else -> "Off"
+                                !isPermitted -> stringResource(R.string.tile_preview_needs_permission)
+                                connectedDeviceName != null -> connectedDeviceName
+                                isConnecting -> stringResource(R.string.tile_state_connecting)
+                                isBtOn -> stringResource(R.string.tile_state_on)
+                                else -> stringResource(R.string.tile_state_off)
                             }
                             Text(
                                 text = qsSub,
@@ -520,12 +545,15 @@ fun MainScreen(
                     }
 
                     // Ghost Wi-Fi Tile
+                    // Marked decorative: it is a preview of the neighbouring system tile, not a
+                    // control this app owns, so it must not read as tappable.
                     Row(
                         modifier = Modifier
                             .weight(1f)
                             .height(64.dp)
                             .clip(RoundedCornerShape(32.dp))
                             .background(MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.65f))
+                            .semantics { contentDescription = "" }
                             .padding(horizontal = 14.dp),
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(10.dp)
@@ -538,7 +566,7 @@ fun MainScreen(
                             contentAlignment = Alignment.Center
                         ) {
                             Icon(
-                                imageVector = Icons.Rounded.Wifi,
+                                painter = AppIcons.Wifi,
                                 contentDescription = null,
                                 tint = MaterialTheme.colorScheme.outline.copy(alpha = 0.7f),
                                 modifier = Modifier.size(20.dp)
@@ -547,15 +575,17 @@ fun MainScreen(
 
                         Column(modifier = Modifier.weight(1f)) {
                             Text(
-                                text = "Wi‑Fi",
+                                text = stringResource(R.string.tile_preview_wifi),
                                 style = MaterialTheme.typography.bodyMedium.copy(
                                     fontSize = 14.sp,
                                     fontWeight = FontWeight.Medium,
                                     color = MaterialTheme.colorScheme.outline.copy(alpha = 0.7f)
-                                )
+                                ),
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
                             )
                             Text(
-                                text = "Off",
+                                text = stringResource(R.string.tile_preview_wifi_off),
                                 style = MaterialTheme.typography.bodySmall.copy(
                                     fontSize = 12.sp,
                                     color = MaterialTheme.colorScheme.outline.copy(alpha = 0.55f)
@@ -579,13 +609,13 @@ fun MainScreen(
                         )
                     ) {
                         Icon(
-                            imageVector = Icons.Rounded.Add,
+                            painter = AppIcons.Add,
                             contentDescription = null,
                             modifier = Modifier.size(20.dp)
                         )
                         Spacer(modifier = Modifier.width(8.dp))
                         Text(
-                            text = "Add tile to Quick Settings",
+                            text = stringResource(R.string.action_add_tile),
                             fontSize = 15.sp,
                             fontWeight = FontWeight.Medium
                         )
@@ -599,7 +629,7 @@ fun MainScreen(
                         shape = RoundedCornerShape(24.dp)
                     ) {
                         Text(
-                            text = "Open Bluetooth settings",
+                            text = stringResource(R.string.action_open_bluetooth_settings_full),
                             fontSize = 15.sp,
                             fontWeight = FontWeight.Medium
                         )
@@ -619,7 +649,7 @@ fun MainScreen(
                     ) {
                         Text("•", color = MaterialTheme.colorScheme.onSurfaceVariant)
                         Text(
-                            text = "Tap toggles",
+                            text = stringResource(R.string.tile_tip_tap),
                             fontSize = 13.sp,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
@@ -631,7 +661,7 @@ fun MainScreen(
                     ) {
                         Text("•", color = MaterialTheme.colorScheme.onSurfaceVariant)
                         Text(
-                            text = "Long-press opens settings",
+                            text = stringResource(R.string.tile_tip_long_press),
                             fontSize = 13.sp,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
@@ -641,7 +671,11 @@ fun MainScreen(
 
             // 6. Educational Footnote
             Text(
-                text = "Android 13+ normally blocks apps from switching Bluetooth directly and shows a multi-step prompt. This app targets SDK 32 for its compatibility layer while compiling against SDK 35, so the tile can toggle instantly.",
+                text = stringResource(
+                    R.string.footnote_how_it_works,
+                    BuildConfig.TARGET_SDK,
+                    BuildConfig.COMPILE_SDK
+                ),
                 style = MaterialTheme.typography.bodySmall.copy(
                     fontSize = 12.sp,
                     lineHeight = 18.sp,
@@ -664,8 +698,7 @@ fun MainScreen(
                     onClick = onOpenGitHub,
                     shape = RoundedCornerShape(20.dp),
                     color = MaterialTheme.colorScheme.surfaceContainerHigh,
-                    contentColor = MaterialTheme.colorScheme.onSurface,
-                    modifier = Modifier.clip(RoundedCornerShape(20.dp))
+                    contentColor = MaterialTheme.colorScheme.onSurface
                 ) {
                     Row(
                         modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp),
@@ -674,12 +707,12 @@ fun MainScreen(
                     ) {
                         Icon(
                             painter = painterResource(id = R.drawable.ic_github),
-                            contentDescription = "GitHub Repository",
+                            contentDescription = null,
                             tint = MaterialTheme.colorScheme.onSurface,
                             modifier = Modifier.size(20.dp)
                         )
                         Text(
-                            text = "GitHub",
+                            text = stringResource(R.string.github_label),
                             fontSize = 13.sp,
                             fontWeight = FontWeight.Medium,
                             color = MaterialTheme.colorScheme.onSurface

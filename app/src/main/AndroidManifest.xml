@@ -16,11 +16,17 @@
         android:name="android.permission.BLUETOOTH_CONNECT"
         tools:targetApi="31" />
 
+    <!-- Bluetooth hardware is used but not required, so the app stays installable on devices
+         without a radio and reports Tile.STATE_UNAVAILABLE there instead of failing. -->
+    <uses-feature
+        android:name="android.hardware.bluetooth"
+        android:required="false" />
+
     <application
         android:allowBackup="true"
-        android:icon="@drawable/ic_launcher_foreground"
+        android:icon="@mipmap/ic_launcher"
         android:label="@string/app_name"
-        android:roundIcon="@drawable/ic_launcher_foreground"
+        android:roundIcon="@mipmap/ic_launcher_round"
         android:supportsRtl="true"
         android:theme="@style/Theme.BluetoothQuicktile">
 
@@ -35,7 +41,12 @@
             </intent-filter>
         </activity>
 
-        <!-- Trampoline activity invoked on Quick Settings tile long-press -->
+        <!--
+            Trampoline activity invoked on Quick Settings tile long-press.
+            exported="true" is required here: SystemUI is a separate app and launches this
+            explicitly to open the tile's preferences screen. It does open an activity that only
+            forwards to system Bluetooth settings, so the exposure is limited to that.
+        -->
         <activity
             android:name=".BluetoothSettingsTrampolineActivity"
             android:exported="true"
@@ -64,7 +75,12 @@
                 android:value="true" />
         </service>
 
-        <!-- System broadcast receiver for real-time Bluetooth adapter and device state changes -->
+        <!--
+            System broadcast receiver for real-time Bluetooth adapter and device state changes.
+            Every action here is a protected broadcast on which only the system can send, so
+            this receiver is not a spoofing target. All six are also on Android's implicit
+            broadcast exception list, so a manifest receiver does receive them on API 26+.
+        -->
         <receiver
             android:name=".BluetoothStateReceiver"
             android:exported="true">

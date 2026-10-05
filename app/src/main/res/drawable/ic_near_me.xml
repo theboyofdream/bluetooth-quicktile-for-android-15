@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    Material Design "near me" icon, 24dp.
+    Path data from the Material Design icon set (Apache License 2.0).
+    Present because material-icons-core does not ship this glyph.
+-->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24">
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M21,3L3,10.53v0.98l6.84,2.65L12.48,21h0.98L21,3z" />
+</vector>

@@ -1,8 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <style name="Theme.BluetoothQuicktile" parent="Theme.Material3.DayNight.NoActionBar">
-        <item name="colorPrimary">@color/primary</item>
-        <item name="colorOnPrimary">@color/on_primary</item>
-        <item name="android:statusBarColor">@color/background</item>
-        <item name="android:windowLightStatusBar">true</item>
+    <!--
+        Light window theme. MainActivity extends ComponentActivity and renders with Compose, so it
+        needs no AppCompat or Material Components theme; a platform theme is enough and avoids
+        pulling those libraries in just for this. The night variant lives in values-night.
+    -->
+    <style name="Theme.BluetoothQuicktile" parent="@android:style/Theme.Material.Light.NoActionBar">
+        <item name="android:windowBackground">@color/window_background</item>
     </style>
 </resources>

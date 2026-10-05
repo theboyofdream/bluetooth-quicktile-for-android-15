@@ -1,171 +1,69 @@
-# Bluetooth Quicktile for Android 15
+# Bluetooth Quicktile
 
-A minimal, native **Kotlin Android app** that provides a dedicated **Bluetooth Quick Settings tile**, restoring the instant one-tap toggle behavior of legacy Android Bluetooth tiles on **Android 14 and Android 15 (API 35)**.
+A native **Kotlin** app that adds a **Bluetooth Quick Settings tile** which toggles Bluetooth in
+one tap, without the multi-step bottom sheet Android 13+ uses.
 
-Built with **Jetpack Compose Material 3** and **Dynamic Wallpaper Colors (Material You / Monet)**.
+> **Not on Google Play, by design.** One-tap toggle needs `targetSdk = 32`; Play requires API 36 as
+> of August 2026. See [docs/journey.md](docs/journey.md).
 
----
+> **Unverified on real hardware.** The app assumes Android 14/15 still honour the API 32
+> compatibility path for `BluetoothAdapter.enable()`. Not yet confirmed on a device.
 
-## 🚀 Pre-Built Release APK
+## Install
 
-Ready-to-install, signed release APK is available directly for download:
-* 📥 **Direct APK Download:** [**BluetoothQuickTile-release.apk (Latest)**](https://github.com/theboyofdream/bluetooth-quicktile-for-android-15/releases/latest/download/BluetoothQuickTile-release.apk)
+Download: [**BluetoothQuickTile-release.apk**](https://github.com/theboyofdream/bluetooth-quicktile-for-android-15/releases/latest/download/BluetoothQuickTile-release.apk)
 
-Install directly via ADB:
 ```powershell
 adb install -r BluetoothQuickTile-release.apk
 ```
-Or download `BluetoothQuickTile-release.apk` directly on your Android device and tap to install.
 
----
+Then add the tile: pull the shade down twice, tap the edit (pencil) icon, and drag **Bluetooth**
+into your active tiles.
 
-## 🎨 Modern Compose Material 3 UI
+Tap it. Grant the **Nearby devices** prompt if asked. Now a single tap toggles Bluetooth; long-press
+opens the system Bluetooth settings.
 
-The app features an interactive setup & diagnostic interface crafted with Jetpack Compose Material 3:
+## The tile
 
-* **Dynamic Wallpaper Colors (Monet):** On Android 12+ (including Android 14 and 15), colors automatically adapt to the user's system wallpaper and dark/light mode.
-* **Hero Card & Animated Orb:**
-  * Displays a responsive central Bluetooth orb that morphs between a squircle (when Off) and a circle (when On).
-  * Plays dual-concentric expanding ripple pulse rings when active.
-  * Displays live device state (`"Bluetooth is on"`, `"Bluetooth is off"`, `"Connected to <Device Name>"`).
-  * Features a **Split Action Button** (1 row, 2 buttons: instant toggle + system Bluetooth settings shortcut).
-* **3-State Nearby Devices Permission Card:**
-  * **Granted:** Clean surface card with checkmark, confirmation title, and description.
-  * **Denied / Blocked:** Contextual warning/error styling with an unlocked features list and a **1-row 2-button split pill** (`"Allow nearby devices"` or `"Open app settings"` + settings gear).
-* **Live Quick Settings Tile Preview:**
-  * Live interactive mockup of the Quick Settings tile alongside a ghost Wi-Fi companion tile.
-  * Tapping the preview tile toggles Bluetooth live.
-  * One-tap **"Add tile to Quick Settings"** button via Android 13+ `StatusBarManager.requestAddTileService`.
-* **GitHub Button:**
-  * Centered GitHub badge at the bottom of the screen opening the project page.
+| Subtitle | Meaning |
+| :--- | :--- |
+| `Off` | Adapter off, or turning off |
+| `On` | Adapter on, nothing connected |
+| `Connecting…` | Adapter turning on, or a profile connecting |
+| `<Device Name>` | A device is connected, e.g. *"Pixel Buds Pro"* |
+| `Unavailable` | The adapter state could not be read |
 
----
+## Design notes
 
-## 🔍 Technical Analysis & How It Works
+The tile is the whole product. There is no launcher icon by design, so nothing clutters the home
+screen. Tapping the tile when the permission is missing opens the app to request it.
 
-### The Android 14/15 Bluetooth Problem
-Starting with Android 13 (API 33) and heavily enforced in Android 14 and 15:
-* Calls to `BluetoothAdapter.enable()` and `BluetoothAdapter.disable()` are restricted for standard applications targeting API 33+.
-* On modern Android, calling these APIs returns `false` (no-op) and refuses to change Bluetooth power state.
-* In Android 14 QPR2 and Android 15, Google redesigned the stock Bluetooth tile into a multi-step floating bottom sheet dialog (`BluetoothDialogDelegate` in SystemUI), forcing users to tap twice just to toggle Bluetooth on or off.
+The interesting part is the mechanism: Android 13 restricted `BluetoothAdapter.enable()` and
+`disable()` for apps targeting API 33+, and holding `targetSdk = 32` keeps the old behaviour alive.
+That single line is what the project is built around, and what keeps it off the Play Store.
 
-### How This App Restores 1-Tap Control
-Inspection of the decompiled **MacroDroid Connectivity Helper** revealed the mechanism:
-1. **Target SDK Compatibility Layer (`targetSdk = 32`):**
-   Android executes apps targeting API $\le 32$ in backward-compatibility mode. In this mode, the Android runtime permits programmatic calls to `BluetoothAdapter.enable()` and `BluetoothAdapter.disable()` without throwing security exceptions or prompting system dialogs.
-2. **Modern Compilation (`compileSdk = 35`):**
-   Compiled against the latest Android 15 SDK with Android 12+ runtime permissions (`BLUETOOTH_CONNECT`) and full Material 3 Compose support.
-3. **Device Connection Resolution via Profile Proxy:**
-   Connects to `BluetoothProfile.A2DP` and `BluetoothProfile.HEADSET` to read connected device names dynamically without needing background polling services.
+## Documentation
 
----
+| Document | Covers |
+| --- | --- |
+| [docs/journey.md](docs/journey.md) | Why the app exists, how the compatibility layer works, what it costs, and what is still unproven |
+| [docs/development.md](docs/development.md) | Building, signing, releasing, code conventions, and current verification status |
 
-## 📱 Quick Settings Tile Specification
+## Build from source
 
-The Quick Settings tile strictly displays the following four states:
+Requires JDK 17 and Android SDK 35.
 
-| Subtitle | Tile State | Condition |
-| :--- | :--- | :--- |
-| `Off` | `STATE_INACTIVE` | Bluetooth adapter is disabled or turning off |
-| `On` | `STATE_ACTIVE` | Bluetooth adapter is enabled, not connecting, no device connected |
-| `Connecting…` | `STATE_ACTIVE` | Adapter is turning on OR a Bluetooth profile is currently connecting |
-| `<Device Name>` | `STATE_ACTIVE` | Bluetooth is connected to a remote device (e.g. *"Sony WH-1000XM5"*, *"Pixel Buds Pro"*) |
-
-### Interactions
-
-* **Single Tap (Instant Toggle):**
-  * When **Off**: Immediately enables Bluetooth; the tile optimistically updates to `STATE_ACTIVE` with `"Connecting…"`.
-  * When **On / Connected**: Immediately disables Bluetooth; the tile optimistically updates to `STATE_INACTIVE` with `"Off"`.
-  * Completely bypasses system dialogs and bottom sheets.
-* **Long Press (Full Settings):**
-  * Opens the system Bluetooth settings (`Settings.ACTION_BLUETOOTH_SETTINGS`) where all paired and nearby BLE devices are listed.
-  * Handled via standard Android Quick Settings `QS_TILE_PREFERENCES` with a transparent trampoline activity ([`BluetoothSettingsTrampolineActivity.kt`](app/src/main/java/com/bluetoothquicktile/app/BluetoothSettingsTrampolineActivity.kt)).
-* **About the Tile Chevron (Arrow):**
-  * SystemUI renders a chevron indicator on tiles that declare preferences. In the Android SDK, third-party `TileService` implementations have a single unified `onClick()` callback (the OS does not provide a split-tap listener for custom tiles).
-  * The stock floating bottom sheet is a private, internal SystemUI component with no public intent filter; opening full device settings on long-press provides the cleanest experience.
-
-### Pure Tile-Only Design (No Launcher Clutter)
-* **Zero Launcher Icons:** The app does not declare `CATEGORY_LAUNCHER`, meaning it will **never** clutter your home screen or app drawer with an unwanted icon.
-* **First-Tap Permission Flow:** If the required `BLUETOOTH_CONNECT` permission has not been granted yet, tapping the tile automatically launches the setup dialog. Once granted, the tile functions entirely from the notification shade.
-* **App Settings Access:** If you ever need to revisit setup, you can access the configuration screen via `System Settings > Apps > Bluetooth Quicktile > Additional settings in the app` (`APPLICATION_PREFERENCES`).
-
----
-
-## 🛠️ Project Structure
-
-```text
-BluetoothQuickTile/
-├── BluetoothQuickTile-release.apk     # Pre-built, signed release APK
-├── app/
-│   ├── build.gradle.kts               # compileSdk=35, targetSdk=32, Compose enabled, release signing
-│   ├── release.keystore               # Release signing keystore
-│   ├── proguard-rules.pro
-│   └── src/
-│       └── main/
-│           ├── AndroidManifest.xml    # Pure tile-only manifest (no launcher category)
-│           ├── java/com/bluetoothquicktile/app/
-│           │   ├── BluetoothHelper.kt                     # Direct toggle, permissions & profile proxy
-│           │   ├── BluetoothTileService.kt                # Tile lifecycle, single-tap handler & subtitles
-│           │   ├── BluetoothStateReceiver.kt              # BroadcastReceiver for adapter & ACL events
-│           │   ├── BluetoothSettingsTrampolineActivity.kt # Long-press handler -> ACTION_BLUETOOTH_SETTINGS
-│           │   ├── MainActivity.kt                        # Edge-to-edge Compose host & permission coordinator
-│           │   └── ui/
-│           │       ├── MainScreen.kt                      # Jetpack Compose Material 3 UI & interactive preview
-│           │       ├── PermissionCard.kt                  # 3-state permission card with split buttons
-│           │       └── theme/
-│           │           ├── Color.kt                       # Material 3 colors & status tones
-│           │           └── Theme.kt                       # Dynamic Wallpaper (Monet) theme configuration
-│           └── res/
-│               ├── drawable/                              # Vector icons (ic_qs_bluetooth, connected, off, ic_github)
-│               └── values/                                # Strings, colors, and Material 3 themes
-├── gradle/wrapper/gradle-wrapper.properties
-├── build.gradle.kts                   # Root build configuration
-├── settings.gradle.kts                # Module inclusion
-├── gradlew
-├── gradlew.bat
-└── README.md
-```
-
----
-
-## 🔨 Building from Source
-
-### Prerequisites
-* Java JDK 17
-* Android SDK 35 (`platforms;android-35` and `build-tools;35.0.0`)
-
-### Build Release APK
 ```powershell
-.\gradlew.bat assembleRelease
-```
-The output APK is generated at:
-```text
-app/build/outputs/apk/release/app-release.apk
+.\gradlew.bat assembleRelease   # app/build/outputs/apk/release/BluetoothQuickTile-release.apk
+.\gradlew.bat assembleDebug     # app/build/outputs/apk/debug/BluetoothQuickTile-debug.apk
 ```
 
-### Build Debug APK
-```powershell
-.\gradlew.bat assembleDebug
-```
-The output APK is generated at:
-```text
-app/build/outputs/apk/debug/app-debug.apk
-```
+Without a local `app/release.keystore`, the release build falls back to the debug key. CI requires
+the keystore and refuses to publish otherwise.
 
----
+To release: bump `VERSION`, then merge into `release`. That triggers the workflow, which tags
+`v<VERSION>` and attaches the APK.
 
-## 📋 Installation & Setup
+## Licence
 
-1. **Install the APK:**
-   ```powershell
-   adb install -r BluetoothQuickTile-release.apk
-   ```
-2. **Add Tile to Quick Settings:**
-   * Pull down the notification shade twice.
-   * Tap the pencil / edit icon.
-   * Scroll down to find **Bluetooth** (Quick Tile) and drag it into your active tiles.
-3. **Grant Permission on First Tap:**
-   * Tap the tile once. If prompted, grant the `Nearby Devices` (`BLUETOOTH_CONNECT`) permission.
-4. **Enjoy 1-Tap Bluetooth:**
-   * **Single tap:** Direct ON/OFF toggle.
-   * **Long press:** Open system Bluetooth device settings.
+GPL-3.0. See [LICENSE](LICENSE).

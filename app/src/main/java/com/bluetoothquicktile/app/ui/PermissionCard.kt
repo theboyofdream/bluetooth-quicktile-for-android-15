@@ -2,33 +2,22 @@ package com.bluetoothquicktile.app.ui
 
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.tween
-import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.rounded.Check
-import androidx.compose.material.icons.rounded.Headphones
-import androidx.compose.material.icons.rounded.Info
-import androidx.compose.material.icons.rounded.Lock
-import androidx.compose.material.icons.rounded.NearMe
-import androidx.compose.material.icons.rounded.PowerSettingsNew
-import androidx.compose.material.icons.rounded.Settings
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -36,12 +25,15 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.graphics.painter.Painter
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.bluetoothquicktile.app.R
 import com.bluetoothquicktile.app.ui.theme.ErrContainerDark
 import com.bluetoothquicktile.app.ui.theme.ErrContainerLight
+import com.bluetoothquicktile.app.ui.theme.ErrRed
 import com.bluetoothquicktile.app.ui.theme.ErrTextDark
 import com.bluetoothquicktile.app.ui.theme.ErrTextLight
 import com.bluetoothquicktile.app.ui.theme.GreenOk
@@ -90,8 +82,10 @@ fun PermissionCard(
 
     val iconBg = when (state) {
         PermissionUiState.GRANTED -> if (dark) GreenOkContainerDark else GreenOkContainerLight
-        PermissionUiState.DENIED -> (if (dark) WarnOrange else WarnOrange).copy(alpha = 0.22f)
-        PermissionUiState.BLOCKED -> (if (dark) ErrTextLight else ErrRed).copy(alpha = 0.22f)
+        PermissionUiState.DENIED -> WarnOrange.copy(alpha = 0.22f)
+        // A tinted container, not the text colour. ErrTextLight is near-black in dark mode and
+        // vanished against ErrContainerDark when used as a background.
+        PermissionUiState.BLOCKED -> if (dark) ErrContainerDark else ErrRed.copy(alpha = 0.22f)
     }
 
     val iconTint = when (state) {
@@ -101,22 +95,26 @@ fun PermissionCard(
     }
 
     val leadIcon = when (state) {
-        PermissionUiState.GRANTED -> Icons.Rounded.Check
-        PermissionUiState.DENIED -> Icons.Rounded.Info
-        PermissionUiState.BLOCKED -> Icons.Rounded.Lock
+        PermissionUiState.GRANTED -> AppIcons.Check
+        PermissionUiState.DENIED -> AppIcons.Info
+        PermissionUiState.BLOCKED -> AppIcons.Lock
     }
 
-    val title = when (state) {
-        PermissionUiState.GRANTED -> "Nearby devices allowed"
-        PermissionUiState.DENIED -> "Allow nearby devices"
-        PermissionUiState.BLOCKED -> "Nearby devices is turned off"
-    }
+    val title = stringResource(
+        when (state) {
+            PermissionUiState.GRANTED -> R.string.permission_granted_title
+            PermissionUiState.DENIED -> R.string.permission_denied_title
+            PermissionUiState.BLOCKED -> R.string.permission_blocked_title
+        }
+    )
 
-    val description = when (state) {
-        PermissionUiState.GRANTED -> "Needed to control Bluetooth and read device names."
-        PermissionUiState.DENIED -> "Android requires this permission before an app can switch Bluetooth or see what is connected."
-        PermissionUiState.BLOCKED -> "Android will not ask again, so it has to be switched on in settings."
-    }
+    val description = stringResource(
+        when (state) {
+            PermissionUiState.GRANTED -> R.string.permission_granted_description
+            PermissionUiState.DENIED -> R.string.permission_denied_description
+            PermissionUiState.BLOCKED -> R.string.permission_blocked_description
+        }
+    )
 
     Column(
         modifier = modifier
@@ -141,7 +139,7 @@ fun PermissionCard(
                 contentAlignment = Alignment.Center
             ) {
                 Icon(
-                    imageVector = leadIcon,
+                    painter = leadIcon,
                     contentDescription = null,
                     tint = iconTint,
                     modifier = Modifier.size(26.dp)
@@ -183,13 +181,13 @@ fun PermissionCard(
                 modifier = Modifier.padding(start = 4.dp)
             ) {
                 PermissionUseRow(
-                    icon = Icons.Rounded.PowerSettingsNew,
-                    text = "Turn Bluetooth on or off from the tile",
+                    icon = AppIcons.PowerSettingsNew,
+                    text = stringResource(R.string.permission_unlocks_toggle),
                     textColor = targetContentColor
                 )
                 PermissionUseRow(
-                    icon = Icons.Rounded.Headphones,
-                    text = "Show the names of connected devices",
+                    icon = AppIcons.Headphones,
+                    text = stringResource(R.string.permission_unlocks_names),
                     textColor = targetContentColor
                 )
             }
@@ -205,7 +203,7 @@ fun PermissionCard(
                     .padding(horizontal = 14.dp, vertical = 10.dp)
             ) {
                 Text(
-                    text = "How: App settings → Permissions → Nearby devices → Allow",
+                    text = stringResource(R.string.permission_blocked_how),
                     style = MaterialTheme.typography.bodySmall.copy(
                         fontSize = 13.sp,
                         lineHeight = 18.sp,
@@ -218,9 +216,13 @@ fun PermissionCard(
 
         // CTA Action Button: Split Button (1 row 2 buttons, exactly matching Hero card)
         if (state != PermissionUiState.GRANTED) {
-            val mainLabel = if (state == PermissionUiState.DENIED) "Allow nearby devices" else "Open app settings"
+            val mainLabel = if (state == PermissionUiState.DENIED) {
+                stringResource(R.string.action_allow_nearby)
+            } else {
+                stringResource(R.string.action_open_app_settings)
+            }
             val mainAction = if (state == PermissionUiState.DENIED) onRequestPermission else onOpenAppSettings
-            val mainIcon = if (state == PermissionUiState.DENIED) Icons.Rounded.NearMe else Icons.Rounded.Lock
+            val mainIcon = if (state == PermissionUiState.DENIED) AppIcons.NearMe else AppIcons.Lock
 
             Row(
                 modifier = Modifier
@@ -250,7 +252,7 @@ fun PermissionCard(
                         horizontalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
                         Icon(
-                            imageVector = mainIcon,
+                            painter = mainIcon,
                             contentDescription = null,
                             modifier = Modifier.size(20.dp)
                         )
@@ -281,8 +283,8 @@ fun PermissionCard(
                     )
                 ) {
                     Icon(
-                        imageVector = Icons.Rounded.Settings,
-                        contentDescription = "App Settings",
+                        painter = AppIcons.Settings,
+                        contentDescription = stringResource(R.string.action_open_app_settings),
                         modifier = Modifier.size(24.dp)
                     )
                 }
@@ -293,7 +295,7 @@ fun PermissionCard(
 
 @Composable
 private fun PermissionUseRow(
-    icon: ImageVector,
+    icon: Painter,
     text: String,
     textColor: Color
 ) {
@@ -302,7 +304,7 @@ private fun PermissionUseRow(
         horizontalArrangement = Arrangement.spacedBy(12.dp)
     ) {
         Icon(
-            imageVector = icon,
+            painter = icon,
             contentDescription = null,
             tint = textColor.copy(alpha = 0.75f),
             modifier = Modifier.size(20.dp)
@@ -317,6 +319,3 @@ private fun PermissionUseRow(
         )
     }
 }
-
-// Fallback color reference for Blocked state
-private val ErrRed = Color(0xFFBA1A1A)

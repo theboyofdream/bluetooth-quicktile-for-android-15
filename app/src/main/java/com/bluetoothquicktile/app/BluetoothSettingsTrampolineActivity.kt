@@ -17,25 +17,38 @@ class BluetoothSettingsTrampolineActivity : Activity() {
 
     companion object {
         private const val TAG = "BluetoothSettingsTrampoline"
+
+        /**
+         * Tried in order. ACTION_BLUETOOTH_SETTINGS is absent on some devices, and it moved on
+         * Android 15, so the broader wireless and top-level settings pages act as fallbacks.
+         */
+        private val SETTINGS_ACTIONS = listOf(
+            Settings.ACTION_BLUETOOTH_SETTINGS,
+            Settings.ACTION_WIRELESS_SETTINGS,
+            Settings.ACTION_SETTINGS
+        )
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        val bluetoothSettingsIntent = Intent(Settings.ACTION_BLUETOOTH_SETTINGS).apply {
-            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
-        }
-
-        try {
-            startActivity(bluetoothSettingsIntent)
-        } catch (e: Exception) {
-            Log.e(TAG, "Failed to launch Settings.ACTION_BLUETOOTH_SETTINGS: ${e.message}")
+        var launched = false
+        for (action in SETTINGS_ACTIONS) {
             try {
-                startActivity(Intent(Settings.ACTION_SETTINGS).apply {
+                startActivity(Intent(action).apply {
                     flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
                 })
-            } catch (ignored: Exception) {
+                launched = true
+                break
+            } catch (e: Exception) {
+                Log.w(TAG, "Settings action $action unavailable: ${e.message}")
             }
+        }
+
+        if (!launched) {
+            // Nothing resolved. Close immediately rather than leaving a blank translucent
+            // activity on screen.
+            Log.e(TAG, "No Bluetooth settings screen available on this device")
         }
 
         // Finish immediately so this trampoline activity leaves no trace in back stack

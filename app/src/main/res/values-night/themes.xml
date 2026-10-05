@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!--
+        Dark window theme. windowLightStatusBar=false keeps the status bar icons light, which the
+        single light-only theme previously rendered dark-on-dark.
+        android:statusBarColor is intentionally not set: MainActivity calls enableEdgeToEdge(),
+        which makes the bar transparent on modern Android, and the item is deprecated on API 35.
+    -->
+    <style name="Theme.BluetoothQuicktile" parent="@android:style/Theme.Material.NoActionBar">
+        <item name="android:windowBackground">@color/window_background</item>
+        <item name="android:windowLightStatusBar">false</item>
+    </style>
+</resources>

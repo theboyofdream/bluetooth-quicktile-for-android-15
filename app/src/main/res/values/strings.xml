@@ -1,31 +1,86 @@
+<?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">Bluetooth Quicktile for android 15</string>
     <string name="tile_label">Bluetooth</string>
+
+    <!--
+      Tile subtitles. These are the only four values the Quick Settings tile ever shows, plus the
+      "unavailable" fallback used when the adapter state cannot be read.
+      Do not rely on these strings for logic; switch on BluetoothHelper.BluetoothCondition.
+    -->
     <string name="tile_state_off">Off</string>
     <string name="tile_state_on">On</string>
     <string name="tile_state_connecting">Connecting…</string>
+    <string name="tile_state_unavailable">Unavailable</string>
+    <string name="tile_content_description">%1$s, %2$s</string>
 
-    <!-- Main UI strings -->
+    <!-- Header -->
     <string name="header_title">Bluetooth Quicktile</string>
-    <string name="header_subtitle">Direct one-tap Bluetooth tile for Android 15</string>
+    <string name="header_subtitle">Toggle Bluetooth from your Quick Settings</string>
 
-    <string name="permission_card_title">Bluetooth Permission</string>
-    <string name="permission_card_desc">Requires Nearby Devices (BLUETOOTH_CONNECT) permission to read connected device names and control Bluetooth.</string>
-    <string name="permission_granted">Permission Granted</string>
-    <string name="permission_needed">Permission Required</string>
-    <string name="btn_grant_permission">Grant Permission</string>
+    <!-- Hero card -->
+    <string name="hero_toggle_bluetooth">Toggle Bluetooth</string>
+    <string name="hero_lock_badge">Nearby devices permission needed</string>
+    <string name="hero_title_on">Bluetooth is on</string>
+    <string name="hero_title_off">Bluetooth is off</string>
+    <string name="hero_title_unknown">Bluetooth state unknown</string>
+    <string name="hero_subtitle_needs_permission">Allow nearby devices to control it</string>
+    <string name="hero_subtitle_connected">Connected to %1$s</string>
+    <string name="hero_subtitle_connecting">Connecting to device…</string>
+    <string name="hero_subtitle_no_device">No device connected</string>
+    <string name="hero_subtitle_turn_on">Turn on to connect devices</string>
+    <string name="hero_subtitle_unreadable">Bluetooth state could not be read</string>
 
-    <string name="tile_setup_title">Quick Settings Tile</string>
-    <string name="tile_setup_desc">Add the tile to your Quick Settings panel to toggle Bluetooth directly with a single tap.</string>
-    <string name="btn_add_tile">Add Tile to Quick Settings</string>
-    <string name="tile_already_added">Tile is available in Quick Settings</string>
+    <!-- Split action button -->
+    <string name="action_allow_nearby">Allow nearby devices</string>
+    <string name="action_turn_off">Turn off</string>
+    <string name="action_turn_on">Turn on</string>
+    <string name="action_open_bluetooth_settings">Bluetooth settings</string>
 
-    <string name="status_title">Current Bluetooth State</string>
-    <string name="btn_test_toggle">Test Direct Toggle</string>
-    <string name="btn_open_bt_settings">Open Bluetooth Settings</string>
-    <string name="tile_usage_tip">Single-tap toggles Bluetooth directly.\nLong-press opens Bluetooth &amp; BLE device settings.</string>
+    <!-- Snackbar messages -->
+    <string name="snackbar_bluetooth_off">Bluetooth turned off</string>
+    <string name="snackbar_bluetooth_on">Bluetooth turned on</string>
+    <string name="snackbar_bluetooth_unavailable">Bluetooth state could not be read</string>
+    <string name="snackbar_permission_unavailable">Nearby devices permission is already granted</string>
+    <string name="snackbar_tile_added">Tile added to Quick Settings!</string>
+    <string name="snackbar_tile_already_added">Tile is already in Quick Settings</string>
+    <string name="snackbar_tile_request_failed">Could not add the tile. Add it from the Quick Settings edit screen.</string>
+    <string name="snackbar_tile_manual_instructions">Swipe down twice from the status bar and tap the pencil icon to add the tile.</string>
+    <string name="snackbar_bluetooth_settings_unavailable">Bluetooth settings are not available on this device</string>
+    <string name="snackbar_no_browser">No app available to open this link</string>
 
+    <!-- Permission card: granted -->
+    <string name="permission_granted_title">Nearby devices allowed</string>
+    <string name="permission_granted_description">Needed to control Bluetooth and read device names.</string>
 
-    <string name="how_it_works_title">How Android 15 Direct Control Works</string>
-    <string name="how_it_works_desc">Android 13+ normally blocks apps from directly enabling or disabling Bluetooth and forces a multi-step popup dialog. By utilizing the proven mechanism discovered in the MacroDroid Connectivity Helper reference, this app leverages Android\'s backward compatibility layer (targetSdk 32) while compiling against the Android 15 SDK (compileSdk 35) to regain instant, one-tap Bluetooth toggling without extra UI.</string>
+    <!-- Permission card: denied -->
+    <string name="permission_denied_title">Allow nearby devices</string>
+    <string name="permission_denied_description">Android requires this permission before an app can switch Bluetooth or see what is connected.</string>
+
+    <!-- Permission card: blocked -->
+    <string name="permission_blocked_title">Nearby devices is turned off</string>
+    <string name="permission_blocked_description">Android will not ask again, so it has to be switched on in settings.</string>
+    <string name="permission_blocked_how">How: App settings → Permissions → Nearby devices → Allow</string>
+
+    <string name="permission_unlocks_toggle">Turn Bluetooth on or off from the tile</string>
+    <string name="permission_unlocks_names">Show the names of connected devices</string>
+    <string name="action_open_app_settings">Open app settings</string>
+
+    <!-- Quick Settings tile card -->
+    <string name="tile_card_title">Quick Settings tile</string>
+    <string name="tile_card_description">Toggle Bluetooth from your shade without opening the app.</string>
+    <string name="tile_preview_bluetooth">Bluetooth</string>
+    <string name="tile_preview_needs_permission">Needs permission</string>
+    <string name="tile_preview_wifi">Wi‑Fi</string>
+    <string name="tile_preview_wifi_off">Off</string>
+    <string name="action_add_tile">Add tile to Quick Settings</string>
+    <string name="action_open_bluetooth_settings_full">Open Bluetooth settings</string>
+    <string name="tile_tip_tap">Tap toggles</string>
+    <string name="tile_tip_long_press">Long-press opens settings</string>
+
+    <!-- Educational footnote -->
+    <string name="footnote_how_it_works">Android 13+ normally blocks apps from switching Bluetooth directly and shows a multi-step prompt. This app targets SDK %1$d for its compatibility layer while compiling against SDK %2$d, so the tile can toggle instantly.</string>
+
+    <!-- GitHub link -->
+    <string name="github_label">GitHub</string>
 </resources>
