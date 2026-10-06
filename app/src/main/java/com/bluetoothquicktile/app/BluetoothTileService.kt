@@ -2,10 +2,7 @@ package com.bluetoothquicktile.app
 
 import android.annotation.SuppressLint
 import android.app.PendingIntent
-import android.content.BroadcastReceiver
-import android.content.Context
 import android.content.Intent
-import android.content.IntentFilter
 import android.graphics.drawable.Icon
 import android.os.Build
 import android.os.Handler
@@ -13,7 +10,6 @@ import android.os.Looper
 import android.service.quicksettings.Tile
 import android.service.quicksettings.TileService
 import android.util.Log
-import androidx.core.content.ContextCompat
 
 /**
  * Dedicated Bluetooth Quick Settings Tile for Android 15.
@@ -24,6 +20,8 @@ import androidx.core.content.ContextCompat
  *    - On
  *    - Connecting…
  *    - <Device Name>
+ *    - Tap to set up, shown only until BLUETOOTH_CONNECT is granted
+ *    - Unavailable, shown only on a device with no Bluetooth radio
  * 2. Instant single-tap direct toggle without multi-step UI or popup sheets.
  * 3. Real-time updates on adapter and device connection state changes.
  */
@@ -39,19 +37,27 @@ class BluetoothTileService : TileService() {
          * normal transition and short enough that the correction is not visible as a flicker.
          */
         private const val TOGGLE_RECONCILE_DELAY_MS = 500L
-    }
 
-    private var isReceiverRegistered = false
+        /**
+         * Window used to collapse a burst of broadcasts into a single refresh.
+         *
+         * One ACL connect arrives as `ACL_CONNECTED` plus an A2DP and a headset
+         * `CONNECTION_STATE_CHANGED`, and a disconnect as the same three again. Every refresh
+         * that reaches `STATE_ON` opens fresh A2DP and Headset profile proxies over binder, so
+         * without a coalescing window a single physical connection cost several proxy round
+         * trips, each able to leave a 1.5 s query outstanding.
+         */
+        private const val REFRESH_COALESCE_MS = 150L
+    }
 
     private val handler = Handler(Looper.getMainLooper())
     private var reconcileRunnable: Runnable? = null
 
-    private val bluetoothReceiver = object : BroadcastReceiver() {
-        override fun onReceive(context: Context?, intent: Intent?) {
-            if (BuildConfig.DEBUG) Log.d(TAG, "Broadcast received: ${intent?.action}")
-            refreshTile()
-        }
-    }
+    /**
+     * Refresh entry point, debounced so a burst of broadcasts costs one profile-proxy round
+     * trip instead of one per action.
+     */
+    private val pendingRefresh = Runnable { doRefreshTile() }
 
     override fun onTileAdded() {
         super.onTileAdded()
@@ -59,31 +65,33 @@ class BluetoothTileService : TileService() {
         refreshTile()
     }
 
+    /**
+     * The tile refreshes itself in response to Bluetooth state through the manifest-declared
+     * [BluetoothStateReceiver], which calls `requestListeningState` for every adapter and profile
+     * change. Registering a second receiver here would receive those same broadcasts and refresh
+     * again, so the two paths together doubled the proxy traffic on every connection event.
+     */
     override fun onStartListening() {
         super.onStartListening()
         if (BuildConfig.DEBUG) Log.d(TAG, "Tile started listening")
-        registerReceiverIfNeeded()
         refreshTile()
     }
 
     override fun onStopListening() {
         super.onStopListening()
         if (BuildConfig.DEBUG) Log.d(TAG, "Tile stopped listening")
-        cancelPendingReconcile()
-        unregisterReceiverIfNeeded()
+        cancelPendingWork()
     }
 
     override fun onTileRemoved() {
-        cancelPendingReconcile()
-        unregisterReceiverIfNeeded()
+        cancelPendingWork()
         super.onTileRemoved()
     }
 
     override fun onDestroy() {
-        // onStopListening is not guaranteed to run before the service is torn down, so the
-        // receiver and any queued reconcile are cleaned up here as well.
-        cancelPendingReconcile()
-        unregisterReceiverIfNeeded()
+        // onStopListening is not guaranteed to run before the service is torn down, so anything
+        // queued is cleaned up here as well.
+        cancelPendingWork()
         super.onDestroy()
     }
 
@@ -191,9 +199,17 @@ class BluetoothTileService : TileService() {
     }
 
     /**
+     * Requests a tile refresh, coalescing any that are already queued.
+     */
+    private fun refreshTile() {
+        handler.removeCallbacks(pendingRefresh)
+        handler.postDelayed(pendingRefresh, REFRESH_COALESCE_MS)
+    }
+
+    /**
      * Queries Bluetooth state and updates Tile label, subtitle, state, and icon.
      */
-    fun refreshTile() {
+    private fun doRefreshTile() {
         val tile = qsTile ?: return
 
         BluetoothHelper.resolveTileInfo(this, getString(R.string.tile_label)) { info ->
@@ -251,33 +267,8 @@ class BluetoothTileService : TileService() {
         reconcileRunnable = null
     }
 
-    private fun registerReceiverIfNeeded() {
-        if (isReceiverRegistered) return
-        try {
-            ContextCompat.registerReceiver(
-                this,
-                bluetoothReceiver,
-                buildBluetoothFilter(),
-                ContextCompat.RECEIVER_NOT_EXPORTED
-            )
-            isReceiverRegistered = true
-        } catch (e: SecurityException) {
-            // Registering for protected system broadcasts can be refused. Without the receiver
-            // the tile still updates on onStartListening and after every tap.
-            Log.w(TAG, "Could not register Bluetooth receiver: ${e.message}")
-        }
+    private fun cancelPendingWork() {
+        cancelPendingReconcile()
+        handler.removeCallbacks(pendingRefresh)
     }
-
-    private fun unregisterReceiverIfNeeded() {
-        if (!isReceiverRegistered) return
-        try {
-            unregisterReceiver(bluetoothReceiver)
-        } catch (e: Exception) {
-            Log.w(TAG, "Error unregistering receiver: ${e.message}")
-        } finally {
-            isReceiverRegistered = false
-        }
-    }
-
-    private fun buildBluetoothFilter(): IntentFilter = BluetoothStateReceiver.newFilter()
 }

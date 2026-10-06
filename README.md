@@ -6,8 +6,10 @@ one tap, without the multi-step bottom sheet Android 13+ uses.
 > **Not on Google Play, by design.** One-tap toggle needs `targetSdk = 32`; Play requires API 36 as
 > of August 2026. See [docs/journey.md](docs/journey.md).
 
-> **Unverified on real hardware.** The app assumes Android 14/15 still honour the API 32
-> compatibility path for `BluetoothAdapter.enable()`. Not yet confirmed on a device.
+> **Works in practice, verified on one device only.** v1.0.2 has been installed and toggled
+> Bluetooth successfully. It relies on Android 14/15 still honouring the API 32 compatibility path
+> for `BluetoothAdapter.enable()`, so it may break in a future OS release. Not yet confirmed
+> across devices or versions.
 
 ## Install
 
@@ -31,12 +33,14 @@ opens the system Bluetooth settings.
 | `On` | Adapter on, nothing connected |
 | `Connecting…` | Adapter turning on, or a profile connecting |
 | `<Device Name>` | A device is connected, e.g. *"Pixel Buds Pro"* |
-| `Unavailable` | The adapter state could not be read |
+| `Tap to set up` | Shown until **Nearby devices** is granted; tap to open the app |
+| `Unavailable` | No Bluetooth radio on this device |
 
 ## Design notes
 
-The tile is the whole product. There is no launcher icon by design, so nothing clutters the home
-screen. Tapping the tile when the permission is missing opens the app to request it.
+The tile is the whole product. The app itself is a setup and diagnostics screen, and only shows up
+in the drawer once it has been installed. Tapping the tile when the permission is missing opens the
+app to request it.
 
 The interesting part is the mechanism: Android 13 restricted `BluetoothAdapter.enable()` and
 `disable()` for apps targeting API 33+, and holding `targetSdk = 32` keeps the old behaviour alive.
@@ -59,10 +63,11 @@ Requires JDK 17 and Android SDK 35.
 ```
 
 Without a local `app/release.keystore`, the release build falls back to the debug key. CI requires
-the keystore and refuses to publish otherwise.
+all four signing secrets and fails before building if any is missing, so a debug-signed or
+differently-signed artifact can never reach a public release.
 
 To release: bump `VERSION`, then merge into `release`. That triggers the workflow, which tags
-`v<VERSION>` and attaches the APK.
+`v<VERSION>` and attaches the APK. The job refuses to run if that tag already exists.
 
 ## Licence
 

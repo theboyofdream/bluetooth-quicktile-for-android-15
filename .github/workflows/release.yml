@@ -30,12 +30,16 @@ jobs:
           java-version: '21'
           cache: 'gradle'
 
-      - name: Read version and keystore
+      - name: Validate version, tag and keystore
         id: version
         env:
           KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
         run: |
           set -euo pipefail
+
           VERSION="$(tr -d '[:space:]' < VERSION)"
           if [ -z "$VERSION" ]; then
             echo "::error::VERSION is empty."
@@ -44,27 +48,42 @@ jobs:
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
           echo "tag=v$VERSION" >> "$GITHUB_OUTPUT"
 
-          # If a secret keystore is provided, decode it; otherwise generate a valid release keystore
-          mkdir -p app
-          if [ -n "$KEYSTORE_BASE64" ]; then
-            echo "$KEYSTORE_BASE64" | base64 -d > app/release.keystore
-            echo "Using configured repository release keystore."
-          else
-            echo "::warning::KEYSTORE_BASE64 secret is not set. Generating CI release signing keystore."
-            keytool -genkeypair -v -keystore app/release.keystore -alias "${{ secrets.KEY_ALIAS || 'release' }}" -keyalg RSA -keysize 2048 -validity 10000 -storepass "${{ secrets.KEYSTORE_PASSWORD || 'android' }}" -keypass "${{ secrets.KEY_PASSWORD || 'android' }}" -dname "CN=BluetoothQuickTile, OU=Android, O=OpenSource, L=Unknown, S=Unknown, C=US"
-          fi
-
-          # Releases are immutable. Bump VERSION to publish the next one.
+          # Releases are immutable. Bump VERSION to publish the next one. This has to fail the
+          # job, not warn: the publish step leaves `allowUpdates` off, so a tag that already
+          # exists would otherwise be republished and silently replace the download for everyone
+          # who already has it.
           if git rev-parse -q --verify "refs/tags/v$VERSION" >/dev/null; then
-            echo "::warning::Tag v$VERSION already exists locally."
+            echo "::error::Tag v$VERSION already exists. Bump VERSION to publish a new release."
+            exit 1
           fi
           echo "Releasing v$VERSION"
 
+          # The signing key must be identical for every release, otherwise each APK has a
+          # different signature and users cannot upgrade over the previous one. There is
+          # deliberately no generated fallback: a key minted per run is unrecoverable, so the
+          # next release would be uninstallable on top of this one. Failing here is loud and
+          # cheap; publishing an APK nobody can update to is neither.
+          if [ -z "$KEYSTORE_BASE64" ]; then
+            echo "::error::KEYSTORE_BASE64 is not set. A release must be signed with the repository keystore."
+            exit 1
+          fi
+          for secret in KEYSTORE_PASSWORD KEY_ALIAS KEY_PASSWORD; do
+            if [ -z "${!secret}" ]; then
+              echo "::error::$secret is not set. It is required alongside KEYSTORE_BASE64; there is no default in CI."
+              exit 1
+            fi
+          done
+
+          # .gitignore excludes *.keystore, so this cannot be committed by accident.
+          mkdir -p app
+          echo "$KEYSTORE_BASE64" | base64 -d > app/release.keystore
+          echo "Using the configured repository release keystore."
+
       - name: Build release APK
         env:
-          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD || 'android' }}
-          KEY_ALIAS: ${{ secrets.KEY_ALIAS || 'release' }}
-          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD || 'android' }}
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
         run: |
           chmod +x gradlew
           ./gradlew assembleRelease
@@ -80,4 +99,6 @@ jobs:
           # Release output only. A **/*.apk glob would also upload the debuggable debug build.
           artifacts: app/build/outputs/apk/release/BluetoothQuickTile-release.apk,source.zip
           generateReleaseNotes: true
-          allowUpdates: true
+          # Left unset on purpose. Overwriting a published release would swap the APK under
+          # anyone who downloaded it, which for a signed build means an uninstallable upgrade.
+          artifactErrorsFailBuild: true

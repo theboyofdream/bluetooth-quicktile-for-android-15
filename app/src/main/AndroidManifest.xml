@@ -41,12 +41,17 @@
         <!--
             Trampoline activity invoked on Quick Settings tile long-press.
             exported="true" is required here: SystemUI is a separate app and launches this
-            explicitly to open the tile's preferences screen. It does open an activity that only
-            forwards to system Bluetooth settings, so the exposure is limited to that.
+            explicitly to open the tile's preferences screen.
+
+            android:permission closes it to SystemUI. Per the TileService docs, guarding a
+            QS_TILE_PREFERENCES activity with BIND_QUICK_SETTINGS_TILE means "only quick
+            settings UI provided by this service" can launch it. Without it, any app on the
+            device could start this activity and use it to force a settings page open.
         -->
         <activity
             android:name=".BluetoothSettingsTrampolineActivity"
             android:exported="true"
+            android:permission="android.permission.BIND_QUICK_SETTINGS_TILE"
             android:excludeFromRecents="true"
             android:noHistory="true"
             android:taskAffinity=""

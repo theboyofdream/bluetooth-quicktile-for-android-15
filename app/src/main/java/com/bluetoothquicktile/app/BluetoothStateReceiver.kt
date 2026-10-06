@@ -23,9 +23,10 @@ class BluetoothStateReceiver : BroadcastReceiver() {
         private const val TAG = "BluetoothStateReceiver"
 
         /**
-         * The single definition of the Bluetooth actions this app observes. The manifest filter,
-         * the TileService receiver and the MainActivity receiver all use this, so the three
-         * registrations cannot drift apart.
+         * The single definition of the Bluetooth actions this app observes. The manifest filter
+         * and the MainActivity receiver both use this, so the two registrations cannot drift
+         * apart. The tile needs no receiver of its own: it is refreshed through
+         * `requestListeningState` from the manifest declaration below.
          *
          * All of these are protected system broadcasts, so they arrive only from the platform and
          * cannot be forged by another app.

@@ -80,12 +80,16 @@ fun PermissionCard(
 
     val animatedBg by animateColorAsState(targetCardBg, animationSpec = tween(250), label = "permCardBg")
 
+    // The badge background must be legible against the card background chosen above, which is
+    // the *Light container in light mode and the *ContainerDark in dark mode. The container
+    // colours therefore cannot be reused here: ErrContainerDark is exactly the dark card
+    // background, so the badge vanished. The *Text* pair is scheme-flipped too, so each branch
+    // takes the lighter of its two accents rather than one fixed colour.
     val iconBg = when (state) {
+        // Already a surface tint, so it stays opaque. Dimming it would erase the badge.
         PermissionUiState.GRANTED -> if (dark) GreenOkContainerDark else GreenOkContainerLight
-        PermissionUiState.DENIED -> WarnOrange.copy(alpha = 0.22f)
-        // A tinted container, not the text colour. ErrTextLight is near-black in dark mode and
-        // vanished against ErrContainerDark when used as a background.
-        PermissionUiState.BLOCKED -> if (dark) ErrContainerDark else ErrRed.copy(alpha = 0.22f)
+        PermissionUiState.DENIED -> (if (dark) WarnTextDark else WarnOrange).copy(alpha = 0.22f)
+        PermissionUiState.BLOCKED -> (if (dark) ErrTextDark else ErrRed).copy(alpha = 0.22f)
     }
 
     val iconTint = when (state) {

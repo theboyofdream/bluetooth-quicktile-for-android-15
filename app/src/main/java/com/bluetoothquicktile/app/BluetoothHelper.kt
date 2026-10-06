@@ -181,8 +181,11 @@ object BluetoothHelper {
     /**
      * Resolves the current tile state, label, subtitle, and icon.
      *
-     * The subtitle is exactly one of the four values the tile spec allows: "Off", "On",
-     * "Connecting…", or "<Device Name>".
+     * The subtitle is one of the four values the tile spec allows: "Off", "On", "Connecting…",
+     * or "<Device Name>", plus two setup states. "Tap to set up" is shown while the permission
+     * is missing and stays on `STATE_INACTIVE` so the tile remains tappable, because SystemUI
+     * swallows clicks on unavailable tiles. "Unavailable" is shown only when there is no
+     * Bluetooth radio at all.
      *
      * [onResolved] is always invoked exactly once, on the main thread. When the connected device
      * name cannot be determined within the proxy timeout, it fires with the best-known state
@@ -222,14 +225,18 @@ object BluetoothHelper {
             else null
 
         if (state == null) {
-            // State could not be read directly. Keep STATE_INACTIVE so it stays interactive.
+            // The state could not be read. Two separate concerns, deliberately not conflated:
+            // the condition must be UNAVAILABLE, because "Off" would be a specific false claim
+            // and null means unknown, not off; but the Tile state must stay INACTIVE, because
+            // SystemUI does not dispatch clicks to an unavailable tile and the tile would become
+            // permanently inert.
             onResolved(
                 TileDisplayInfo(
                     label = label,
-                    subtitle = context.getString(R.string.tile_state_off),
+                    subtitle = context.getString(R.string.tile_state_unavailable),
                     state = Tile.STATE_INACTIVE,
                     iconRes = R.drawable.ic_qs_bluetooth_off,
-                    condition = BluetoothCondition.OFF
+                    condition = BluetoothCondition.UNAVAILABLE
                 )
             )
             return

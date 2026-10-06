@@ -134,8 +134,8 @@ state. Most users open it once.
 
 ## Things the first review got wrong
 
-A bug review produced a 30-item report. Two of the original claims in `bugs.md` did not survive
-checking against the AOSP platform manifest:
+A bug review produced a 30-item report, most of which has since been fixed. Two of its claims did
+not survive checking against the AOSP platform manifest:
 
 - **ACL broadcasts cannot reach the manifest receiver.** Wrong. All six actions are on Android's
   implicit broadcast exception list, so a manifest receiver does receive them on API 26 and up.

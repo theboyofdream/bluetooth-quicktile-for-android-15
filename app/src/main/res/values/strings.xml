@@ -4,8 +4,9 @@
     <string name="tile_label">Bluetooth</string>
 
     <!--
-      Tile subtitles. These are the only four values the Quick Settings tile ever shows, plus the
-      "unavailable" fallback used when the adapter state cannot be read.
+      Tile subtitles. These are the only values the Quick Settings tile ever shows: the four in the
+      tile spec (Off, On, Connecting…, <Device Name>) plus two setup states, "Tap to set up" while
+      BLUETOOTH_CONNECT is missing and "Unavailable" on a device with no Bluetooth radio.
       Do not rely on these strings for logic; switch on BluetoothHelper.BluetoothCondition.
     -->
     <string name="tile_state_off">Off</string>

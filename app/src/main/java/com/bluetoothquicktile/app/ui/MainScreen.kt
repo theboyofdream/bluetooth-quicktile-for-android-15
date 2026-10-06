@@ -310,8 +310,12 @@ fun MainScreen(
                     horizontalAlignment = Alignment.CenterHorizontally,
                     verticalArrangement = Arrangement.spacedBy(4.dp)
                 ) {
+                    // "Unknown" wins over "off" whenever the adapter could not be read. Without
+                    // the isReadable guard this asserted Bluetooth was off while the subtitle
+                    // below admitted the state could not be read.
                     val stateTitle = when {
                         !isPermitted -> stringResource(R.string.hero_title_unknown)
+                        !isReadable -> stringResource(R.string.hero_title_unknown)
                         isBtOn -> stringResource(R.string.hero_title_on)
                         else -> stringResource(R.string.hero_title_off)
                     }
@@ -531,6 +535,9 @@ fun MainScreen(
                                 connectedDeviceName != null -> connectedDeviceName
                                 isConnecting -> stringResource(R.string.tile_state_connecting)
                                 isBtOn -> stringResource(R.string.tile_state_on)
+                                // Mirrors the real tile: an unreadable adapter is reported as
+                                // unavailable rather than as a definite "Off".
+                                !isReadable -> stringResource(R.string.tile_state_unavailable)
                                 else -> stringResource(R.string.tile_state_off)
                             }
                             Text(
