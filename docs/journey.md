@@ -161,6 +161,9 @@ Honest list of what is not settled:
    who removes it.
 5. **Long-press opens full Bluetooth settings**, not a device list. The stock bottom sheet is a
    private SystemUI component with no public API, so opening settings is the closest honest option.
+6. **No external toggle intent.** A broadcast/API for other apps to toggle Bluetooth was considered
+   and intentionally not implemented: an exported toggle endpoint would let any app change Bluetooth
+   state unless strongly restricted, which is an unnecessary security risk for this app.
 
 ---
 
